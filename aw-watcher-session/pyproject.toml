@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "aw-watcher-session"
+version = "0.1.0"
+description = "Windows session state watcher for ActivityWatch"
+authors = ["ActivityWatch Developers"]
+license = "MPL-2.0"
+
+[tool.poetry.scripts]
+aw-watcher-session = "aw_watcher_session:main"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+aw-client = "^0.5.14"
+
+[tool.poetry.dev-dependencies]
+mypy = "*"
+pyinstaller = {version = "*", python = "^3.8,<3.14"}
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

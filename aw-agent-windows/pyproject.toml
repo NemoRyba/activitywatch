@@ -1,0 +1,31 @@
+[tool.poetry]
+name = "aw-agent-windows"
+version = "0.1.0"
+description = "Windows fleet sync agent for ActivityWatch"
+authors = ["ActivityWatch Developers"]
+license = "MPL-2.0"
+
+[tool.poetry.scripts]
+aw-agent-windows = "aw_agent_windows:main"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+aw-core = "^0.5.16"
+requests = "*"
+
+[tool.poetry.group.dev.dependencies]
+mypy = "*"
+pytest = "*"
+ruff = "*"
+types-requests = "*"
+
+[tool.ruff]
+target-version = "py38"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "B", "UP"]
+ignore = ["E501"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
