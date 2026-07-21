@@ -54,11 +54,9 @@ def main():
     if snapshot.domain:
         bucket_data["domain"] = snapshot.domain
 
-    client.create_bucket(bucket_id, "sessionstate", queued=True, data=bucket_data)
-    client.wait_for_start()
-
-    logger.info("aw-watcher-session started")
     with client:
+        client.create_bucket(bucket_id, "sessionstate", queued=True, data=bucket_data)
+        logger.info("aw-watcher-session started")
         heartbeat_loop(client, bucket_id, args.poll_time, identity)
 
 
