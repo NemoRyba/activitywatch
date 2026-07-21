@@ -83,6 +83,10 @@ def heartbeat_loop(client, bucket_id, poll_time, identity):
             }
             if snapshot.domain:
                 event_data["domain"] = snapshot.domain
+            if snapshot.session_flags is not None:
+                event_data["session_flags"] = snapshot.session_flags
+            if snapshot.lock_source:
+                event_data["lock_source"] = snapshot.lock_source
 
             event = Event(timestamp=now, data=event_data)
             client.heartbeat(

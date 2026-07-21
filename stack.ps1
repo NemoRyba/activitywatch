@@ -17,6 +17,7 @@ $PythonExe = Join-Path $ScriptsPath "python.exe"
 $ServerExe = Join-Path $ScriptsPath "aw-server.exe"
 $AfkExe = Join-Path $ScriptsPath "aw-watcher-afk.exe"
 $WindowExe = Join-Path $ScriptsPath "aw-watcher-window.exe"
+$SessionExe = Join-Path $ScriptsPath "aw-watcher-session.exe"
 $SessionDir = Join-Path $RepoRoot "aw-watcher-session"
 
 $StaticDir = Join-Path $RepoRoot "aw-server\aw_server\static"
@@ -189,11 +190,14 @@ function Build-Components {
             StdErr = Join-Path $LogsDir "session.err.log"
             ProcessMatcher = {
                 param($p)
-                return $p.Name -match "^python" -and $p.CommandLine -and $p.CommandLine -match "aw_watcher_session"
+                return (
+                    ($p.Name -ieq "aw-watcher-session.exe" -and $p.ExecutablePath -and ([string]::Equals($p.ExecutablePath, $SessionExe, [System.StringComparison]::OrdinalIgnoreCase))) -or
+                    ($p.Name -match "^python" -and $p.CommandLine -and $p.CommandLine -match "(^|\\s)-m\\s+aw_watcher_session(\\s|$)")
+                )
             }
             ShellMatcher = {
                 param($p)
-                return $p.CommandLine -and $p.CommandLine -match "aw_watcher_session"
+                return $p.CommandLine -and ($p.CommandLine -match [regex]::Escape("aw-watcher-session.exe") -or $p.CommandLine -match "(^|\\s)-m\\s+aw_watcher_session(\\s|$)")
             }
         }
     )
@@ -313,6 +317,11 @@ function Invoke-StartStack {
 
     Ensure-Environment
     Sync-WebUi
+
+    foreach ($component in $Components) {
+        Stop-Component -Component $component
+    }
+    Stop-StrayProcesses -Components $Components
 
     Write-Section "Starting ActivityWatch Stack"
     Start-Component -Component $Components[0]

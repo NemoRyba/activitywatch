@@ -12,6 +12,10 @@ events such as:
 - `logged_in`
 - `no_session`
 
+The watcher reports the state of the Windows session it is running inside.
+For multi-user machines, a separate watcher process should run in each user
+session. A machine-level supervisor can launch those per-session watchers.
+
 ## Usage
 
 ```powershell
