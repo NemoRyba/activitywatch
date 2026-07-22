@@ -58,6 +58,7 @@ Latest fleet UI fixes:
 - start page settings now include `Fleet`
 - fleet user detail view now defaults the start date to today instead of the previous 7-day window; the date input remains user-pickable
 - fleet user detail view now has a direct user selector in the header so users can switch without returning to the fleet user list
+- fleet summary filters now expose a checked-by-default `Subtract AFK time` checkbox; internally this reuses the existing inverse `fleetSummaryShowAfkTime` setting for compatibility
 
 Latest server summary fix:
 
