@@ -61,11 +61,13 @@ Latest fleet UI fixes:
 - fleet summary filters now expose a checked-by-default `Subtract AFK time` checkbox; internally this reuses the existing inverse `fleetSummaryShowAfkTime` setting for compatibility
 - fleet user summary shows a raw daily watcher timeline below the bar chart when the selected range is one day; watchers can be toggled on/off and swimlanes can be switched like the Timeline page
 - category edit now uses a full hue/saturation color picker with native color input and hex entry instead of the limited compact palette; dark-mode styling was added for the picker popover
+- fleet user/device detail views now have a checked-by-default `Only count AFK while session is active` option; this is separate from the chart-only `Subtract AFK time` filter
 
 Latest server summary fix:
 
 - fleet user/device summary cards now merge overlapping state intervals per user/device/session before summing
 - this fixes inflated AFK totals caused by duplicated overlapping `afkstatus` rows
+- fleet user/device summaries can now exclude AFK intervals outside `sessionstate = active`; locked, disconnected, logged-in-only, logged-off, and no-session periods no longer inflate AFK totals when this option is enabled
 - observed July 21 Stepik example before the fix: naive AFK row sum was about 12h 16m
 - observed same range after the fix and stack restart: AFK card dropped to about 3h 17m at the time of verification
 - regression coverage added in `aw-server\tests\test_server.py`
@@ -74,7 +76,7 @@ Latest server summary fix:
 
 Current local notes:
 
-- deployment setup EXEs were rebuilt after the 2026-07-22 category color-picker UI update
+- deployment setup EXEs were rebuilt after the 2026-07-22 session-aware AFK counting update
 - root `backups\` contains local runtime cleanup exports and is intentionally not part of the deployment build
 
 ## 1. Fork Goal
