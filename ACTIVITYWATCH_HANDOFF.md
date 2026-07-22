@@ -540,3 +540,10 @@ That roadmap still reflects the intended direction well, but this handoff is the
 - The settings UI now has an `Authentication and LDAP` section visible only to the built-in `admin` account.
 - LDAP bind passwords are stored server-side but never returned to the browser; the UI can preserve or clear the saved password.
 - Runtime dependency `ldap3` was added to `aw-server/pyproject.toml` and installed into the local build venv for packaging. `poetry.lock` was not regenerated because Poetry is not installed in this environment.
+
+### 2026-07-23 fleet system-load waves
+
+- Added a reusable opt-in CPU/RAM wave graph component backed by `/api/0/fleet/devices/metrics`; it only loads metrics after the user enables "Show system load".
+- Single-device fleet view now has a hidden-by-default system-load graph tied to the selected date range.
+- Fleet user watcher timeline now has the same optional system-load graph for the currently selected devices and range, so activity events can be compared with CPU/RAM spikes.
+- Raw `systemmetrics` buckets are hidden from the watcher timeline rows; system data is shown through the wave graph instead.
