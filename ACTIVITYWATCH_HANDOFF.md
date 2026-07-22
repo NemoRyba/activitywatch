@@ -62,6 +62,7 @@ Latest fleet UI fixes:
 - fleet user summary shows a raw daily watcher timeline below the bar chart when the selected range is one day; watchers can be toggled on/off and swimlanes can be switched like the Timeline page
 - category edit now uses a full hue/saturation color picker with native color input and hex entry instead of the limited compact palette; dark-mode styling was added for the picker popover
 - fleet user/device detail views now have a checked-by-default `Only count AFK while session is active` option; this is separate from the chart-only `Subtract AFK time` filter
+- event edit modals now include a compact category rule creator: pick an event data field (`app`, `title`, `process_name`, `process_path`, etc.), generate/edit a regex, then append it to an existing category or create a new category path
 
 Latest server summary fix:
 
@@ -73,10 +74,11 @@ Latest server summary fix:
 - regression coverage added in `aw-server\tests\test_server.py`
 - fleet server tests passed with `python -m pytest -o addopts= aw-server\tests\test_server.py -k fleet`
 - server PyInstaller output and deployment setup EXEs were rebuilt after this fix
+- field-scoped category rule matching is covered by `npx jest --selectProjects node --runTestsByPath test/unit/classes.test.node.ts --coverage=false`
 
 Current local notes:
 
-- deployment setup EXEs were rebuilt after the 2026-07-22 session-aware AFK counting update
+- deployment setup EXEs were rebuilt after the 2026-07-22 compact event category-rule creator update
 - root `backups\` contains local runtime cleanup exports and is intentionally not part of the deployment build
 
 ## 1. Fork Goal
