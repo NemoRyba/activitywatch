@@ -527,3 +527,16 @@ That roadmap still reflects the intended direction well, but this handoff is the
 - Fleet user watcher timeline panel is shown for selected ranges up to about 3 days, not only single-day ranges. Larger ranges keep the panel hidden to avoid loading very large raw watcher timelines.
 - Fleet user previous-day button imports its `arrow-left` icon explicitly; missing vue-awesome icon imports can surface as `Cannot read properties of undefined (reading 'paths')`.
 - Fresh Windows setup EXEs were rebuilt after copying the web build into `aw-server/aw_server/static` and rebuilding `aw-server/dist/aw-server`.
+
+### 2026-07-23 LDAP authentication draft
+
+- Added optional LDAP/Active Directory authentication behind the existing `/api/0/auth/login` endpoint.
+- Built-in local `admin` remains the fallback/break-glass account and does not fall back to LDAP if the password is wrong.
+- Successful LDAP users are stored in `_auth_users` with `source: ldap`, canonicalized by `sAMAccountName`/UPN where available, and default to `is_admin: false`.
+- Only the built-in `admin` user can access the auth-management endpoints/UI:
+  - `/api/0/admin/auth/ldap`
+  - `/api/0/admin/auth/ldap/test`
+  - `/api/0/admin/auth/users`
+- The settings UI now has an `Authentication and LDAP` section visible only to the built-in `admin` account.
+- LDAP bind passwords are stored server-side but never returned to the browser; the UI can preserve or clear the saved password.
+- Runtime dependency `ldap3` was added to `aw-server/pyproject.toml` and installed into the local build venv for packaging. `poetry.lock` was not regenerated because Poetry is not installed in this environment.
