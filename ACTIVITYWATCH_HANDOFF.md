@@ -3,6 +3,79 @@
 Date: 2026-04-26
 Repo: `E:\projects\activitywatch`
 
+## 0. Latest Status - 2026-07-21
+
+The current priority has shifted from exploration to first LAN deployment.
+
+Validated outputs:
+
+- `dist\deployment\ActivityWatch-Fleet-Server-Setup.exe`
+- `dist\deployment\ActivityWatch-Fleet-Watchers-Setup.exe`
+
+The watcher setup is preconfigured for:
+
+- `http://192.168.0.144:5600/`
+
+Deployment behavior:
+
+- server setup installs to `C:\Program Files\ActivityWatch Fleet Server`
+- server starts as scheduled task `ActivityWatch Fleet Server`
+- server binds to `0.0.0.0:5600` so the web UI/API can be reached from the LAN
+- server runtime data is redirected to `C:\ProgramData\ActivityWatchFleet`
+- watcher setup installs AFK/window/session watchers to `C:\Program Files\ActivityWatch Fleet Watchers`
+- watcher setup creates an all-users Startup shortcut so watchers start for every interactive Windows user login
+- watchers use central mode against `192.168.0.144:5600`
+- watcher request queues are file backed through `aw-client`, so temporary server/network outages are retried after the server returns
+
+Validation done on this working machine:
+
+- web UI build succeeded with `npm run build`
+- built web UI assets were copied into `aw-server\aw_server\static`
+- PyInstaller builds exist for server, AFK watcher, window watcher, and session watcher
+- packaged `aw-server.exe --version` returns `v0.13.2`
+- packaged server starts on a test port and returns `/api/0/info`
+- deployment setup builder completed successfully for server and watchers
+- non-admin smoke install into temp folders passed for both payloads
+
+Important deployment caveats:
+
+- these setup executables are unsigned
+- this build machine was not verified to own `192.168.0.144`; the packages are prepared for the intended server machine with that address
+- run setup files as Administrator on target machines
+- after changing web UI code later, rebuild `aw-server\aw-webui`, copy assets into `aw-server\aw_server\static`, then rebuild/server-package again
+
+Latest fleet UI fixes:
+
+- same-day range selection no longer leaves the fleet user summary permanently loading
+- chart x-axis hover no longer triggers repeated redraw loops
+- AFK hatch overlay is shown only when the AFK checkbox is enabled
+- timeline chart uses a sticky y-axis rail so the hour scale remains visible while horizontally scrolling
+- chart legend was removed; category details now live in the category tree below the chart
+- chart bottom-label hover shows total bucket detail, category totals, and total AFK for that time bin
+- chart segment hover shows only that segment/category detail
+- category tree starts collapsed to avoid clutter
+- category tree category paths are de-duplicated, so `Uncategorized`, `Comms`, and `IM` are shown once instead of repeated
+- start page settings now include `Fleet`
+- fleet user detail view now defaults the start date to today instead of the previous 7-day window; the date input remains user-pickable
+
+Latest server summary fix:
+
+- fleet user/device summary cards now merge overlapping state intervals per user/device/session before summing
+- this fixes inflated AFK totals caused by duplicated overlapping `afkstatus` rows
+- observed July 21 Stepik example before the fix: naive AFK row sum was about 12h 16m
+- observed same range after the fix and stack restart: AFK card dropped to about 3h 17m at the time of verification
+- regression coverage added in `aw-server\tests\test_server.py`
+- fleet server tests passed with `python -m pytest -o addopts= aw-server\tests\test_server.py -k fleet`
+- server PyInstaller output and deployment setup EXEs were rebuilt after this fix
+
+Current uncommitted areas:
+
+- root repo has a modified `aw-server` submodule pointer/state
+- `aw-server/aw-webui` has modified fleet/settings/category-tree files
+- `aw-server/aw_server/fleet.py` and `aw-server/tests/test_server.py` include the AFK interval-merge fix
+- `aw-watcher-session` has two new PyInstaller packaging files
+- `deploy/windows` is new and contains the installer scripts and builder
+
 ## 1. Fork Goal
 
 This fork is no longer meant to stay a mostly local, single-user ActivityWatch install.

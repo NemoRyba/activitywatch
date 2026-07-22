@@ -1,5 +1,7 @@
 # ActivityWatch Full Stack - Ready to Run
 
+Current note as of 2026-07-21: this file describes the older local development stack. For the fleet/LAN deployment work, use `ACTIVITYWATCH_HANDOFF.md` and `deploy/windows/README.md`. The current setup executables are generated in `dist\deployment` and target server address `192.168.0.144:5600`.
+
 This repository has been fully prepared and built with all ActivityWatch components:
 
 ## ✅ Installed Components
