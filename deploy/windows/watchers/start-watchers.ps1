@@ -68,3 +68,4 @@ $commonArgs = @("--host", $ServerHost, "--port", [string]$ServerPort, "--central
 Start-Watcher -Key "aw-watcher-afk" -ExeRelativePath "aw-watcher-afk\aw-watcher-afk.exe" -Arguments $commonArgs
 Start-Watcher -Key "aw-watcher-window" -ExeRelativePath "aw-watcher-window\aw-watcher-window.exe" -Arguments $commonArgs
 Start-Watcher -Key "aw-watcher-session" -ExeRelativePath "aw-watcher-session\aw-watcher-session.exe" -Arguments $commonArgs
+Start-Watcher -Key "aw-watcher-audio" -ExeRelativePath "aw-watcher-audio\aw-watcher-audio.exe" -Arguments $commonArgs

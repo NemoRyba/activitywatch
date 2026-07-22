@@ -69,6 +69,7 @@ function Stop-ExistingWatcherProcesses {
         Join-Path $InstallDir "aw-watcher-afk\aw-watcher-afk.exe"
         Join-Path $InstallDir "aw-watcher-window\aw-watcher-window.exe"
         Join-Path $InstallDir "aw-watcher-session\aw-watcher-session.exe"
+        Join-Path $InstallDir "aw-watcher-audio\aw-watcher-audio.exe"
         Join-Path $InstallDir "aw-watcher-system\aw-watcher-system.exe"
     )
 

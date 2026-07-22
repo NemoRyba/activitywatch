@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "aw-watcher-audio"
+version = "0.1.0"
+description = "Lightweight Windows audio activity watcher for ActivityWatch"
+authors = ["ActivityWatch Developers"]
+license = "MPL-2.0"
+
+[tool.poetry.scripts]
+aw-watcher-audio = "aw_watcher_audio:main"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+aw-client = "^0.5.14"
+
+[tool.poetry.dev-dependencies]
+mypy = "*"
+pyinstaller = {version = "*", python = "^3.8,<3.14"}
+pytest = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+

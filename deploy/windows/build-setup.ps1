@@ -32,6 +32,7 @@ $requiredDirs = @(
     "aw-watcher-afk\dist\aw-watcher-afk",
     "aw-watcher-window\dist\aw-watcher-window",
     "aw-watcher-session\dist\aw-watcher-session",
+    "aw-watcher-audio\dist\aw-watcher-audio",
     "aw-watcher-system\dist\aw-watcher-system"
 )
 foreach ($dir in $requiredDirs) {
@@ -49,6 +50,7 @@ Copy-Item -Path (Join-Path $PSScriptRoot "server\uninstall-server.ps1") -Destina
 Copy-Item -Path (Join-Path $repoRoot "aw-watcher-afk\dist\aw-watcher-afk") -Destination (Join-Path $watchersPayload "aw-watcher-afk") -Recurse -Force
 Copy-Item -Path (Join-Path $repoRoot "aw-watcher-window\dist\aw-watcher-window") -Destination (Join-Path $watchersPayload "aw-watcher-window") -Recurse -Force
 Copy-Item -Path (Join-Path $repoRoot "aw-watcher-session\dist\aw-watcher-session") -Destination (Join-Path $watchersPayload "aw-watcher-session") -Recurse -Force
+Copy-Item -Path (Join-Path $repoRoot "aw-watcher-audio\dist\aw-watcher-audio") -Destination (Join-Path $watchersPayload "aw-watcher-audio") -Recurse -Force
 Copy-Item -Path (Join-Path $repoRoot "aw-watcher-system\dist\aw-watcher-system") -Destination (Join-Path $watchersPayload "aw-watcher-system") -Recurse -Force
 Copy-Item -Path (Join-Path $PSScriptRoot "watchers\start-watchers.ps1") -Destination $watchersPayload -Force
 Copy-Item -Path (Join-Path $PSScriptRoot "watchers\supervise-watchers.ps1") -Destination $watchersPayload -Force

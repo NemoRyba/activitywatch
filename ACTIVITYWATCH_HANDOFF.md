@@ -22,10 +22,10 @@ Deployment behavior:
 - server starts as scheduled task `ActivityWatch Fleet Server`
 - server binds to `0.0.0.0:5600` so the web UI/API can be reached from the LAN
 - server runtime data is redirected to `C:\ProgramData\ActivityWatchFleet`
-- watcher setup installs AFK/window/session watchers to `C:\Program Files\ActivityWatch Fleet Watchers`
+- watcher setup installs AFK/window/session/audio watchers to `C:\Program Files\ActivityWatch Fleet Watchers`
 - watcher setup registers scheduled task `ActivityWatch Fleet Watchers Supervisor` as `SYSTEM`; it launches the watcher trio inside every active interactive user session and repeats once per minute to catch fast-user-switching/new logons
 - watcher setup also creates an all-users Startup shortcut as a fallback
-- watcher setup now also stages the system CPU watcher and creates a machine-level scheduled task named `ActivityWatch Fleet System Watcher`
+- watcher setup now also stages the per-user audio watcher and the system CPU watcher; CPU runs through a machine-level scheduled task named `ActivityWatch Fleet System Watcher`
 - watchers use central mode against `192.168.0.144:5600`
 - watcher request queues are file backed through `aw-client`, so temporary server/network outages are retried after the server returns
 
@@ -172,6 +172,8 @@ Implemented:
   - `aw-watcher-session`
 - new lightweight host metrics watcher package:
   - `aw-watcher-system`
+- new lightweight per-user audio activity watcher package:
+  - `aw-watcher-audio`
 
 Important files:
 
@@ -183,6 +185,8 @@ Important files:
 - [aw-watcher-window/aw_watcher_window/lib.py](/E:/projects/activitywatch/aw-watcher-window/aw_watcher_window/lib.py)
 - [aw-watcher-session/aw_watcher_session/main.py](/E:/projects/activitywatch/aw-watcher-session/aw_watcher_session/main.py)
 - [aw-watcher-session/aw_watcher_session/windows.py](/E:/projects/activitywatch/aw-watcher-session/aw_watcher_session/windows.py)
+- [aw-watcher-audio/aw_watcher_audio/main.py](/E:/projects/activitywatch/aw-watcher-audio/aw_watcher_audio/main.py)
+- [aw-watcher-audio/aw_watcher_audio/windows.py](/E:/projects/activitywatch/aw-watcher-audio/aw_watcher_audio/windows.py)
 - [aw-watcher-system/aw_watcher_system/main.py](/E:/projects/activitywatch/aw-watcher-system/aw_watcher_system/main.py)
 - [aw-watcher-system/aw_watcher_system/windows.py](/E:/projects/activitywatch/aw-watcher-system/aw_watcher_system/windows.py)
 
@@ -200,7 +204,20 @@ Current watcher behavior:
 - `aw-watcher-session` is the source of truth for session state
 - `aw-watcher-afk` reports AFK/not-AFK with session identity attached
 - `aw-watcher-window` reports current app/window/process info with session identity attached
+- `aw-watcher-audio` reports aggregate audio playback and microphone endpoint state with session identity attached
 - `aw-watcher-system` reports machine-level CPU load with `systemmetrics` events
+
+Audio watcher notes for the builder machine:
+
+- `aw-watcher-audio` is Windows-only and uses Windows Core Audio / WASAPI through `ctypes`
+- it has no extra runtime dependency for the audio API and does not record, transcribe, or store audio content
+- default sampling interval is 10 seconds, while unchanged state heartbeats flush every 30 seconds to keep traffic low
+- default event data intentionally avoids raw level values; it reports state metadata such as `active`, `silent`, `no_device`, threshold, sampled roles, and device count
+- it creates two per-user buckets: `audio.playback` and `audio.microphone`
+- deployment starts it next to AFK/window/session inside each active interactive user session, not as the machine-level SYSTEM task
+- `deploy\windows\build-setup.ps1` now requires `aw-watcher-audio\dist\aw-watcher-audio` and copies it into the watcher payload
+- build the executable with `pyinstaller aw-watcher-audio.spec --clean --noconfirm` from `aw-watcher-audio` after dependencies are installed
+- after building, rerun `.\deploy\windows\build-setup.ps1 -ServerHost 192.168.0.144 -ServerPort 5600` so `ActivityWatch-Fleet-Watchers-Setup.exe` actually contains the audio watcher
 
 CPU watcher notes for the builder machine:
 
