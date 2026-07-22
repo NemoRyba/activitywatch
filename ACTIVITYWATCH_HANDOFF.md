@@ -22,10 +22,11 @@ Deployment behavior:
 - server starts as scheduled task `ActivityWatch Fleet Server`
 - server binds to `0.0.0.0:5600` so the web UI/API can be reached from the LAN
 - server runtime data is redirected to `C:\ProgramData\ActivityWatchFleet`
+- server setup can now move an existing server database/runtime data directory during update; it prompts for an empty target folder, moves the data there, and stores the selected path in `HKLM\Software\ActivityWatchFleet\DataRoot` plus an install-folder `data-root.txt` fallback
 - watcher setup installs AFK/window/session/audio watchers to `C:\Program Files\ActivityWatch Fleet Watchers`
-- watcher setup registers scheduled task `ActivityWatch Fleet Watchers Supervisor` as `SYSTEM`; it launches the watcher trio inside every active interactive user session and repeats once per minute to catch fast-user-switching/new logons
+- watcher setup registers scheduled task `ActivityWatch Fleet Watchers Supervisor` as `SYSTEM`; it launches the per-user watchers inside every active interactive user session and repeats once per minute to catch fast-user-switching/new logons
 - watcher setup also creates an all-users Startup shortcut as a fallback
-- watcher setup now also stages the per-user audio watcher and the system CPU watcher; CPU runs through a machine-level scheduled task named `ActivityWatch Fleet System Watcher`
+- watcher setup stages the per-user audio watcher and the system CPU/RAM watcher; CPU/RAM runs through a machine-level scheduled task named `ActivityWatch Fleet System Watcher`
 - watchers use central mode against `192.168.0.144:5600`
 - watcher request queues are file backed through `aw-client`, so temporary server/network outages are retried after the server returns
 
@@ -33,7 +34,7 @@ Validation done on this working machine:
 
 - web UI build succeeded with `npm run build`
 - built web UI assets were copied into `aw-server\aw_server\static`
-- PyInstaller builds exist for server, AFK watcher, window watcher, and session watcher
+- PyInstaller builds exist for server, AFK watcher, window watcher, session watcher, audio watcher, and CPU/RAM system watcher
 - packaged `aw-server.exe --version` returns `v0.13.2`
 - packaged server starts on a test port and returns `/api/0/info`
 - deployment setup builder completed successfully for server and watchers
@@ -62,6 +63,7 @@ Latest fleet UI fixes:
 - fleet user detail view now has a direct user selector in the header so users can switch without returning to the fleet user list
 - fleet summary filters now expose a checked-by-default `Subtract AFK time` checkbox; internally this reuses the existing inverse `fleetSummaryShowAfkTime` setting for compatibility
 - fleet user summary shows a raw daily watcher timeline below the bar chart when the selected range is one day; watchers can be toggled on/off and swimlanes can be switched like the Timeline page
+- fleet devices view now loads `/api/0/fleet/devices/metrics` and shows per-device CPU/RAM wave sparklines for the selected recent time window
 - category edit now uses a full hue/saturation color picker with native color input and hex entry instead of the limited compact palette; dark-mode styling was added for the picker popover
 - fleet user/device detail views now have a checked-by-default `Only count AFK while session is active` option; this is separate from the chart-only `Subtract AFK time` filter
 - event edit modals now include a compact category rule creator: pick an event data field (`app`, `title`, `process_name`, `process_path`, etc.), generate/edit a regex, then append it to an existing category or create a new category path
@@ -83,7 +85,7 @@ Current local notes:
 - deployment setup EXEs were rebuilt after the 2026-07-22 fleet UI/raw event updates
 - watcher setup was changed after a deployment bug where rerunning setup under one/admin user only started the installer user's watchers; the fixed setup uses the SYSTEM supervisor task to start watchers in each active logged-in user's own Windows session
 - root `backups\` contains local runtime cleanup exports and is intentionally not part of the deployment build
-- new CPU watcher source exists in `aw-watcher-system`, but the deployment setup EXEs must be rebuilt on the builder machine after `aw-watcher-system\dist\aw-watcher-system` exists
+- `aw-watcher-audio` now reports per-user playback/microphone activity and `aw-watcher-system` now reports CPU/RAM usage; watcher setup must be rebuilt and redeployed to watcher machines before audio/RAM data appears in fleet views
 
 ## 1. Fork Goal
 
@@ -205,7 +207,7 @@ Current watcher behavior:
 - `aw-watcher-afk` reports AFK/not-AFK with session identity attached
 - `aw-watcher-window` reports current app/window/process info with session identity attached
 - `aw-watcher-audio` reports aggregate audio playback and microphone endpoint state with session identity attached
-- `aw-watcher-system` reports machine-level CPU load with `systemmetrics` events
+- `aw-watcher-system` reports machine-level CPU/RAM load with `systemmetrics` events
 
 Audio watcher notes for the builder machine:
 
@@ -219,19 +221,19 @@ Audio watcher notes for the builder machine:
 - build the executable with `pyinstaller aw-watcher-audio.spec --clean --noconfirm` from `aw-watcher-audio` after dependencies are installed
 - after building, rerun `.\deploy\windows\build-setup.ps1 -ServerHost 192.168.0.144 -ServerPort 5600` so `ActivityWatch-Fleet-Watchers-Setup.exe` actually contains the audio watcher
 
-CPU watcher notes for the builder machine:
+CPU/RAM watcher notes for the builder machine:
 
-- `aw-watcher-system` is Windows-only and uses the native `GetSystemTimes` API through `ctypes`
+- `aw-watcher-system` is Windows-only and uses the native `GetSystemTimes` and `GlobalMemoryStatusEx` APIs through `ctypes`
 - it intentionally avoids WMI/CIM, `Get-Counter`, and `psutil` to keep overhead minimal and avoid broken performance counter installations
 - default sampling interval is 60 seconds
-- event data includes `metric = cpu_load`, `cpu_percent`, `cpu_idle_percent`, `cpu_count`, and `sample_seconds`
+- event data includes `metric = system_load`, `cpu_percent`, `cpu_idle_percent`, `cpu_count`, `memory_percent`, `memory_used_bytes`, `memory_available_bytes`, `memory_total_bytes`, and `sample_seconds`
 - deployment should run it once per computer, not once per logged-in user
 - `deploy\windows\watchers\start-system-watcher.ps1` starts it as machine identity with `--username system --session-id machine --session-type machine`
 - watcher setup creates the scheduled task `ActivityWatch Fleet System Watcher` as `SYSTEM` at startup; AFK/window/session watchers still use the all-users Startup shortcut per interactive user
 - system watcher logs/pid are under `C:\ProgramData\ActivityWatchFleet`, while per-user watcher logs remain under `%LOCALAPPDATA%\ActivityWatchFleet`
 - `deploy\windows\build-setup.ps1` now requires `aw-watcher-system\dist\aw-watcher-system` and copies it into the watcher payload
 - build the executable with `pyinstaller aw-watcher-system.spec --clean --noconfirm` from `aw-watcher-system` after dependencies are installed
-- after building, rerun `.\deploy\windows\build-setup.ps1 -ServerHost 192.168.0.144 -ServerPort 5600` so `ActivityWatch-Fleet-Watchers-Setup.exe` actually contains the CPU watcher
+- after building, rerun `.\deploy\windows\build-setup.ps1 -ServerHost 192.168.0.144 -ServerPort 5600` so `ActivityWatch-Fleet-Watchers-Setup.exe` actually contains the CPU/RAM watcher
 
 ### 3.2 Fleet / Multi-User Server Extensions
 
@@ -262,6 +264,7 @@ Implemented endpoints worth knowing:
 - `GET /api/0/fleet/users`
 - `GET /api/0/fleet/users/<username>`
 - `GET /api/0/fleet/devices`
+- `GET /api/0/fleet/devices/metrics`
 - `GET /api/0/fleet/devices/<device_id>`
 - `POST /api/0/fleet/report`
 - `POST /api/0/fleet/sync/handshake`

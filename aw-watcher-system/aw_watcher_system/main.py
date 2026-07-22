@@ -15,7 +15,12 @@ from aw_core.log import setup_logging
 from aw_core.models import Event
 
 from .config import parse_args
-from .windows import calculate_cpu_percent, read_cpu_times
+from .windows import (
+    calculate_cpu_percent,
+    calculate_memory_percent,
+    read_cpu_times,
+    read_memory_status,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +59,7 @@ def main():
     bucket_data = build_bucket_metadata(
         identity, source="aw-central-v1" if central_mode else "aw-system"
     )
-    bucket_data["metrics"] = "cpu"
+    bucket_data["metrics"] = "cpu,memory"
 
     with client:
         client.create_bucket(bucket_id, "systemmetrics", queued=True, data=bucket_data)
@@ -71,13 +76,22 @@ def heartbeat_loop(client, bucket_id, poll_time, identity):
             current = read_cpu_times()
             cpu_percent = calculate_cpu_percent(previous, current)
             previous = current
+            memory_status = read_memory_status()
+            memory_percent = calculate_memory_percent(memory_status)
+            memory_used_bytes = max(
+                memory_status.total_physical - memory_status.available_physical, 0
+            )
 
             now = datetime.now(timezone.utc)
             event_data = {
-                "metric": "cpu_load",
+                "metric": "system_load",
                 "cpu_percent": round(cpu_percent, 1),
                 "cpu_idle_percent": round(100.0 - cpu_percent, 1),
                 "cpu_count": os.cpu_count() or 0,
+                "memory_percent": round(memory_percent, 1),
+                "memory_used_bytes": memory_used_bytes,
+                "memory_available_bytes": memory_status.available_physical,
+                "memory_total_bytes": memory_status.total_physical,
                 "sample_seconds": poll_time,
                 "username": identity["username"],
                 "device_id": identity["device_id"],

@@ -3,9 +3,9 @@
 `aw-watcher-system` is a lightweight Windows watcher that reports host-level
 system metrics to ActivityWatch.
 
-The initial metric is total CPU load. It samples Windows' native system CPU
-time counters once per poll interval and sends one queued heartbeat to the
-server.
+It samples Windows' native system CPU time counters and physical memory status
+once per poll interval and sends one queued heartbeat to the server. It avoids
+WMI, CIM, `Get-Counter`, and `psutil`.
 
 ## Usage
 

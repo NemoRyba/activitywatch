@@ -5,8 +5,48 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$registryPath = "HKLM:\Software\ActivityWatchFleet"
+$dataRootFileName = "data-root.txt"
+
+function Get-DefaultRuntimeRoot {
+    return (Join-Path ${env:ProgramData} "ActivityWatchFleet")
+}
+
+function Normalize-DataRoot {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return (Get-DefaultRuntimeRoot)
+    }
+
+    return [IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($Path.Trim().Trim('"')))
+}
+
+function Get-ConfiguredRuntimeRoot {
+    param([string]$InstallDir)
+
+    try {
+        $registryValue = (Get-ItemProperty -Path $registryPath -Name DataRoot -ErrorAction Stop).DataRoot
+        if (-not [string]::IsNullOrWhiteSpace($registryValue)) {
+            return (Normalize-DataRoot $registryValue)
+        }
+    } catch {
+        # Fresh installs and older packages do not have the registry value yet.
+    }
+
+    $configFile = Join-Path $InstallDir $dataRootFileName
+    if (Test-Path $configFile) {
+        $fileValue = Get-Content -Path $configFile -Raw
+        if (-not [string]::IsNullOrWhiteSpace($fileValue)) {
+            return (Normalize-DataRoot $fileValue)
+        }
+    }
+
+    return (Get-DefaultRuntimeRoot)
+}
+
 $installDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$runtimeRoot = Join-Path ${env:ProgramData} "ActivityWatchFleet"
+$runtimeRoot = Get-ConfiguredRuntimeRoot -InstallDir $installDir
 $logsDir = Join-Path $runtimeRoot "logs\server"
 $pidsDir = Join-Path $runtimeRoot "pids"
 $serverExe = Join-Path $installDir "aw-server\aw-server.exe"

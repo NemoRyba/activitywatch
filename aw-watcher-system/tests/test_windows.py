@@ -1,4 +1,9 @@
-from aw_watcher_system.windows import CpuTimes, calculate_cpu_percent
+from aw_watcher_system.windows import (
+    CpuTimes,
+    MemoryStatus,
+    calculate_cpu_percent,
+    calculate_memory_percent,
+)
 
 
 def test_calculate_cpu_percent():
@@ -19,3 +24,15 @@ def test_calculate_cpu_percent_handles_zero_total_delta():
     sample = CpuTimes(idle=100, total=1000)
 
     assert calculate_cpu_percent(sample, sample) == 0.0
+
+
+def test_calculate_memory_percent():
+    status = MemoryStatus(total_physical=16_000, available_physical=4_000)
+
+    assert calculate_memory_percent(status) == 75.0
+
+
+def test_calculate_memory_percent_handles_zero_total():
+    status = MemoryStatus(total_physical=0, available_physical=0)
+
+    assert calculate_memory_percent(status) == 0.0
