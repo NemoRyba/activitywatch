@@ -57,6 +57,7 @@ Latest fleet UI fixes:
 - category tree category paths are de-duplicated, so `Uncategorized`, `Comms`, and `IM` are shown once instead of repeated
 - start page settings now include `Fleet`
 - fleet user detail view now defaults the start date to today instead of the previous 7-day window; the date input remains user-pickable
+- fleet user detail view now has a direct user selector in the header so users can switch without returning to the fleet user list
 
 Latest server summary fix:
 
