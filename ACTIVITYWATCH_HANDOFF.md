@@ -1,9 +1,9 @@
 # ActivityWatch Fork Handoff
 
-Date: 2026-04-26
+Date: 2026-07-22
 Repo: `E:\projects\activitywatch`
 
-## 0. Latest Status - 2026-07-21
+## 0. Latest Status - 2026-07-22
 
 The current priority has shifted from exploration to first LAN deployment.
 
@@ -60,6 +60,7 @@ Latest fleet UI fixes:
 - fleet user detail view now has a direct user selector in the header so users can switch without returning to the fleet user list
 - fleet summary filters now expose a checked-by-default `Subtract AFK time` checkbox; internally this reuses the existing inverse `fleetSummaryShowAfkTime` setting for compatibility
 - fleet user summary shows a raw daily watcher timeline below the bar chart when the selected range is one day; watchers can be toggled on/off and swimlanes can be switched like the Timeline page
+- category edit now uses a full hue/saturation color picker with native color input and hex entry instead of the limited compact palette; dark-mode styling was added for the picker popover
 
 Latest server summary fix:
 
@@ -71,13 +72,10 @@ Latest server summary fix:
 - fleet server tests passed with `python -m pytest -o addopts= aw-server\tests\test_server.py -k fleet`
 - server PyInstaller output and deployment setup EXEs were rebuilt after this fix
 
-Current uncommitted areas:
+Current local notes:
 
-- root repo has a modified `aw-server` submodule pointer/state
-- `aw-server/aw-webui` has modified fleet/settings/category-tree files
-- `aw-server/aw_server/fleet.py` and `aw-server/tests/test_server.py` include the AFK interval-merge fix
-- `aw-watcher-session` has two new PyInstaller packaging files
-- `deploy/windows` is new and contains the installer scripts and builder
+- deployment setup EXEs were rebuilt after the 2026-07-22 category color-picker UI update
+- root `backups\` contains local runtime cleanup exports and is intentionally not part of the deployment build
 
 ## 1. Fork Goal
 
