@@ -34,6 +34,8 @@ Re-running the server setup works as an update: it stops the existing installed 
 
 Watcher setup installs AFK, window, and session watchers to `C:\Program Files\ActivityWatch Fleet Watchers`. It creates an all-users Startup shortcut so the watchers start inside every logged-in user's desktop session. Watcher retry queues remain in each user's local ActivityWatch data directory, so temporary server/network outages are retried.
 
+Re-running the watcher setup works as an update: it stops existing installed watcher processes, overwrites the program files, recreates the all-users Startup shortcut, and preserves each user's local retry queues/logs.
+
 ## Verify
 
 On the server machine after installing:
