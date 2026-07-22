@@ -511,3 +511,19 @@ The original detailed implementation roadmap is in:
 - [roadmap.md](/E:/projects/activitywatch/roadmap.md)
 
 That roadmap still reflects the intended direction well, but this handoff is the more accurate picture of current implementation state.
+
+
+## 10. Latest Local Work Notes
+
+### 2026-07-23 timeline audio/session readability
+
+- Fleet user daily watcher timeline now labels audio watcher bars by audio state, same idea as session bars. Expected audio states include `active`, `silent`, `no_device`, and `error`.
+- Audio watcher tooltips now show state, stream, active roles, device count, device name, and session when that data is present.
+- Timeline detail popover now exposes a state color picker for state-driven bars:
+  - session state bars use keys like `sessionstate:locked`
+  - audio bars use keys like `audio.microphone:active`
+- The chosen colors are persisted through the existing web UI settings store/server settings API in `timelineStateColorsData`, so the server remembers them as user preferences.
+- Fleet summary block chart now auto-scrolls once after data load/refresh to the densest activity area. Manual user scrolling cancels any pending auto-scroll so the chart does not keep snapping back.
+- Fleet user watcher timeline panel is shown for selected ranges up to about 3 days, not only single-day ranges. Larger ranges keep the panel hidden to avoid loading very large raw watcher timelines.
+- Fleet user previous-day button imports its `arrow-left` icon explicitly; missing vue-awesome icon imports can surface as `Cannot read properties of undefined (reading 'paths')`.
+- Fresh Windows setup EXEs were rebuilt after copying the web build into `aw-server/aw_server/static` and rebuilding `aw-server/dist/aw-server`.
