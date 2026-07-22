@@ -84,6 +84,8 @@ function New-IExpressSed {
         [string]$SedPath
     )
 
+    $installerPowerShell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+
     $content = @"
 [Version]
 Class=IEXPRESS
@@ -115,7 +117,7 @@ DisplayLicense=
 FinishMessage=Installed.
 TargetName=$TargetName
 FriendlyName=$FriendlyName
-AppLaunched=powershell.exe -NoProfile -ExecutionPolicy Bypass -File $InstallScript
+AppLaunched=$installerPowerShell -NoProfile -ExecutionPolicy Bypass -File $InstallScript
 FILE0="$InstallScript"
 FILE1="payload.zip"
 
