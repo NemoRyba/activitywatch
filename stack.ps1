@@ -19,6 +19,8 @@ $AfkExe = Join-Path $ScriptsPath "aw-watcher-afk.exe"
 $WindowExe = Join-Path $ScriptsPath "aw-watcher-window.exe"
 $SessionExe = Join-Path $ScriptsPath "aw-watcher-session.exe"
 $SessionDir = Join-Path $RepoRoot "aw-watcher-session"
+$SystemExe = Join-Path $ScriptsPath "aw-watcher-system.exe"
+$SystemDir = Join-Path $RepoRoot "aw-watcher-system"
 
 $StaticDir = Join-Path $RepoRoot "aw-server\aw_server\static"
 $DistDir = Join-Path $RepoRoot "aw-server\aw-webui\dist"
@@ -97,6 +99,10 @@ function Ensure-Environment {
 
     if (-not (Test-Path $SessionDir)) {
         throw "Session watcher directory not found: $SessionDir"
+    }
+
+    if (-not (Test-Path $SystemDir)) {
+        throw "System watcher directory not found: $SystemDir"
     }
 }
 
@@ -198,6 +204,26 @@ function Build-Components {
             ShellMatcher = {
                 param($p)
                 return $p.CommandLine -and ($p.CommandLine -match [regex]::Escape("aw-watcher-session.exe") -or $p.CommandLine -match "(^|\\s)-m\\s+aw_watcher_session(\\s|$)")
+            }
+        },
+        @{
+            Key = "system"
+            Display = "aw-watcher-system"
+            FilePath = $PythonExe
+            ArgumentList = @("-m", "aw_watcher_system") + $watcherArgs
+            WorkingDirectory = $SystemDir
+            StdOut = Join-Path $LogsDir "system.out.log"
+            StdErr = Join-Path $LogsDir "system.err.log"
+            ProcessMatcher = {
+                param($p)
+                return (
+                    ($p.Name -ieq "aw-watcher-system.exe" -and $p.ExecutablePath -and ([string]::Equals($p.ExecutablePath, $SystemExe, [System.StringComparison]::OrdinalIgnoreCase))) -or
+                    ($p.Name -match "^python" -and $p.CommandLine -and $p.CommandLine -match "(^|\\s)-m\\s+aw_watcher_system(\\s|$)")
+                )
+            }
+            ShellMatcher = {
+                param($p)
+                return $p.CommandLine -and ($p.CommandLine -match [regex]::Escape("aw-watcher-system.exe") -or $p.CommandLine -match "(^|\\s)-m\\s+aw_watcher_system(\\s|$)")
             }
         }
     )

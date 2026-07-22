@@ -4,7 +4,8 @@ $installDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $watchers = @(
     Join-Path $installDir "aw-watcher-afk\aw-watcher-afk.exe",
     Join-Path $installDir "aw-watcher-window\aw-watcher-window.exe",
-    Join-Path $installDir "aw-watcher-session\aw-watcher-session.exe"
+    Join-Path $installDir "aw-watcher-session\aw-watcher-session.exe",
+    Join-Path $installDir "aw-watcher-system\aw-watcher-system.exe"
 )
 
 $processes = Get-CimInstance Win32_Process | Where-Object {

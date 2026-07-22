@@ -1,6 +1,7 @@
 param(
     [string]$InstallDir = (Join-Path ${env:ProgramFiles} "ActivityWatch Fleet Watchers"),
     [switch]$SkipStartup,
+    [switch]$SkipSystemTask,
     [switch]$NoStart,
     [switch]$AllowNonAdmin
 )
@@ -68,6 +69,7 @@ function Stop-ExistingWatcherProcesses {
         Join-Path $InstallDir "aw-watcher-afk\aw-watcher-afk.exe"
         Join-Path $InstallDir "aw-watcher-window\aw-watcher-window.exe"
         Join-Path $InstallDir "aw-watcher-session\aw-watcher-session.exe"
+        Join-Path $InstallDir "aw-watcher-system\aw-watcher-system.exe"
     )
 
     foreach ($watcherExe in $watcherExePaths) {
@@ -113,6 +115,7 @@ if (-not (Test-Path $payload)) {
 }
 
 Stop-ExistingWatcherProcesses -InstallDir $InstallDir
+Unregister-ScheduledTask -TaskName "ActivityWatch Fleet System Watcher" -Confirm:$false -ErrorAction SilentlyContinue
 
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 Expand-Archive -Path $payload -DestinationPath $InstallDir -Force
@@ -130,8 +133,36 @@ if (-not $SkipStartup) {
     $shortcut.Save()
 }
 
+if (-not $SkipSystemTask) {
+    $taskName = "ActivityWatch Fleet System Watcher"
+    $powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+    $startScript = Join-Path $InstallDir "start-system-watcher.ps1"
+    $taskArgs = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}"' -f $startScript
+
+    $action = New-ScheduledTaskAction -Execute $powershell -Argument $taskArgs -WorkingDirectory $InstallDir
+    $trigger = New-ScheduledTaskTrigger -AtStartup
+    $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -StartWhenAvailable `
+        -MultipleInstances IgnoreNew
+
+    Register-ScheduledTask `
+        -TaskName $taskName `
+        -Action $action `
+        -Trigger $trigger `
+        -Principal $principal `
+        -Settings $settings `
+        -Description "Start ActivityWatch Fleet system metrics watcher on boot." `
+        -Force | Out-Null
+}
+
 if (-not $NoStart) {
     Register-WatcherSupervisorTask -InstallDir $InstallDir
+    if (-not $SkipSystemTask) {
+        Start-ScheduledTask -TaskName "ActivityWatch Fleet System Watcher"
+    }
 } else {
     Write-Host "Skipping watcher supervisor registration because -NoStart was used."
 }

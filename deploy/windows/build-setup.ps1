@@ -31,7 +31,8 @@ $requiredDirs = @(
     "aw-server\dist\aw-server",
     "aw-watcher-afk\dist\aw-watcher-afk",
     "aw-watcher-window\dist\aw-watcher-window",
-    "aw-watcher-session\dist\aw-watcher-session"
+    "aw-watcher-session\dist\aw-watcher-session",
+    "aw-watcher-system\dist\aw-watcher-system"
 )
 foreach ($dir in $requiredDirs) {
     $path = Join-Path $repoRoot $dir
@@ -48,8 +49,10 @@ Copy-Item -Path (Join-Path $PSScriptRoot "server\uninstall-server.ps1") -Destina
 Copy-Item -Path (Join-Path $repoRoot "aw-watcher-afk\dist\aw-watcher-afk") -Destination (Join-Path $watchersPayload "aw-watcher-afk") -Recurse -Force
 Copy-Item -Path (Join-Path $repoRoot "aw-watcher-window\dist\aw-watcher-window") -Destination (Join-Path $watchersPayload "aw-watcher-window") -Recurse -Force
 Copy-Item -Path (Join-Path $repoRoot "aw-watcher-session\dist\aw-watcher-session") -Destination (Join-Path $watchersPayload "aw-watcher-session") -Recurse -Force
+Copy-Item -Path (Join-Path $repoRoot "aw-watcher-system\dist\aw-watcher-system") -Destination (Join-Path $watchersPayload "aw-watcher-system") -Recurse -Force
 Copy-Item -Path (Join-Path $PSScriptRoot "watchers\start-watchers.ps1") -Destination $watchersPayload -Force
 Copy-Item -Path (Join-Path $PSScriptRoot "watchers\supervise-watchers.ps1") -Destination $watchersPayload -Force
+Copy-Item -Path (Join-Path $PSScriptRoot "watchers\start-system-watcher.ps1") -Destination $watchersPayload -Force
 Copy-Item -Path (Join-Path $PSScriptRoot "watchers\stop-watchers.ps1") -Destination $watchersPayload -Force
 Copy-Item -Path (Join-Path $PSScriptRoot "watchers\uninstall-watchers.ps1") -Destination $watchersPayload -Force
 
@@ -68,6 +71,7 @@ foreach ($scriptName in @("start-server.ps1", "uninstall-server.ps1")) {
 }
 
 Update-DeploymentScriptDefaults -Path (Join-Path $watchersPayload "start-watchers.ps1")
+Update-DeploymentScriptDefaults -Path (Join-Path $watchersPayload "start-system-watcher.ps1")
 
 Compress-Archive -Path (Join-Path $serverPayload "*") -DestinationPath (Join-Path $serverIexpress "payload.zip") -Force
 Compress-Archive -Path (Join-Path $watchersPayload "*") -DestinationPath (Join-Path $watchersIexpress "payload.zip") -Force

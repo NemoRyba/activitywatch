@@ -25,6 +25,7 @@ Deployment behavior:
 - watcher setup installs AFK/window/session watchers to `C:\Program Files\ActivityWatch Fleet Watchers`
 - watcher setup registers scheduled task `ActivityWatch Fleet Watchers Supervisor` as `SYSTEM`; it launches the watcher trio inside every active interactive user session and repeats once per minute to catch fast-user-switching/new logons
 - watcher setup also creates an all-users Startup shortcut as a fallback
+- watcher setup now also stages the system CPU watcher and creates a machine-level scheduled task named `ActivityWatch Fleet System Watcher`
 - watchers use central mode against `192.168.0.144:5600`
 - watcher request queues are file backed through `aw-client`, so temporary server/network outages are retried after the server returns
 
@@ -82,6 +83,7 @@ Current local notes:
 - deployment setup EXEs were rebuilt after the 2026-07-22 fleet UI/raw event updates
 - watcher setup was changed after a deployment bug where rerunning setup under one/admin user only started the installer user's watchers; the fixed setup uses the SYSTEM supervisor task to start watchers in each active logged-in user's own Windows session
 - root `backups\` contains local runtime cleanup exports and is intentionally not part of the deployment build
+- new CPU watcher source exists in `aw-watcher-system`, but the deployment setup EXEs must be rebuilt on the builder machine after `aw-watcher-system\dist\aw-watcher-system` exists
 
 ## 1. Fork Goal
 
@@ -168,6 +170,8 @@ Implemented:
   - `aw-watcher-window`
 - new watcher package:
   - `aw-watcher-session`
+- new lightweight host metrics watcher package:
+  - `aw-watcher-system`
 
 Important files:
 
@@ -179,6 +183,8 @@ Important files:
 - [aw-watcher-window/aw_watcher_window/lib.py](/E:/projects/activitywatch/aw-watcher-window/aw_watcher_window/lib.py)
 - [aw-watcher-session/aw_watcher_session/main.py](/E:/projects/activitywatch/aw-watcher-session/aw_watcher_session/main.py)
 - [aw-watcher-session/aw_watcher_session/windows.py](/E:/projects/activitywatch/aw-watcher-session/aw_watcher_session/windows.py)
+- [aw-watcher-system/aw_watcher_system/main.py](/E:/projects/activitywatch/aw-watcher-system/aw_watcher_system/main.py)
+- [aw-watcher-system/aw_watcher_system/windows.py](/E:/projects/activitywatch/aw-watcher-system/aw_watcher_system/windows.py)
 
 Current watcher metadata model:
 
@@ -194,7 +200,21 @@ Current watcher behavior:
 - `aw-watcher-session` is the source of truth for session state
 - `aw-watcher-afk` reports AFK/not-AFK with session identity attached
 - `aw-watcher-window` reports current app/window/process info with session identity attached
+- `aw-watcher-system` reports machine-level CPU load with `systemmetrics` events
 
+CPU watcher notes for the builder machine:
+
+- `aw-watcher-system` is Windows-only and uses the native `GetSystemTimes` API through `ctypes`
+- it intentionally avoids WMI/CIM, `Get-Counter`, and `psutil` to keep overhead minimal and avoid broken performance counter installations
+- default sampling interval is 60 seconds
+- event data includes `metric = cpu_load`, `cpu_percent`, `cpu_idle_percent`, `cpu_count`, and `sample_seconds`
+- deployment should run it once per computer, not once per logged-in user
+- `deploy\windows\watchers\start-system-watcher.ps1` starts it as machine identity with `--username system --session-id machine --session-type machine`
+- watcher setup creates the scheduled task `ActivityWatch Fleet System Watcher` as `SYSTEM` at startup; AFK/window/session watchers still use the all-users Startup shortcut per interactive user
+- system watcher logs/pid are under `C:\ProgramData\ActivityWatchFleet`, while per-user watcher logs remain under `%LOCALAPPDATA%\ActivityWatchFleet`
+- `deploy\windows\build-setup.ps1` now requires `aw-watcher-system\dist\aw-watcher-system` and copies it into the watcher payload
+- build the executable with `pyinstaller aw-watcher-system.spec --clean --noconfirm` from `aw-watcher-system` after dependencies are installed
+- after building, rerun `.\deploy\windows\build-setup.ps1 -ServerHost 192.168.0.144 -ServerPort 5600` so `ActivityWatch-Fleet-Watchers-Setup.exe` actually contains the CPU watcher
 
 ### 3.2 Fleet / Multi-User Server Extensions
 

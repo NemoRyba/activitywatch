@@ -9,7 +9,8 @@ The watcher setup is preconfigured to send to `http://192.168.0.144:5600/`.
 
 ## Build
 
-From the repo root after the PyInstaller component builds:
+From the repo root after the PyInstaller component builds, including
+`aw-watcher-system`:
 
 ```powershell
 .\deploy\windows\build-setup.ps1 -ServerHost 192.168.0.144 -ServerPort 5600
@@ -32,7 +33,7 @@ Server setup installs `aw-server` to `C:\Program Files\ActivityWatch Fleet Serve
 
 Re-running the server setup works as an update: it stops the existing installed Fleet Server scheduled task/process, overwrites the program files, and preserves runtime data under `C:\ProgramData\ActivityWatchFleet`.
 
-Watcher setup installs AFK, window, and session watchers to `C:\Program Files\ActivityWatch Fleet Watchers`. It creates a machine-level scheduled supervisor task named `ActivityWatch Fleet Watchers Supervisor` which runs as `SYSTEM`, checks active interactive sessions, and starts the watcher trio inside each logged-in user's own session. It also keeps an all-users Startup shortcut as a fallback. Watcher retry queues remain in each user's local ActivityWatch data directory, so temporary server/network outages are retried.
+Watcher setup installs AFK, window, session, and system-metrics watchers to `C:\Program Files\ActivityWatch Fleet Watchers`. It creates a machine-level scheduled supervisor task named `ActivityWatch Fleet Watchers Supervisor` which runs as `SYSTEM`, checks active interactive sessions, and starts AFK/window/session watchers inside each logged-in user's own session. It also keeps an all-users Startup shortcut as a fallback. CPU load is sampled once per computer by a separate machine-level scheduled task named `ActivityWatch Fleet System Watcher`. Watcher retry queues remain in each user's local ActivityWatch data directory, so temporary server/network outages are retried.
 
 Re-running the watcher setup works as an update: it stops existing installed watcher processes, overwrites the program files, recreates the supervisor scheduled task and all-users Startup shortcut, and preserves each user's local retry queues/logs. The setup does not need to be run separately for each Windows user.
 

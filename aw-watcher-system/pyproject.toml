@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "aw-watcher-system"
+version = "0.1.0"
+description = "Lightweight Windows system metrics watcher for ActivityWatch"
+authors = ["ActivityWatch Developers"]
+license = "MPL-2.0"
+
+[tool.poetry.scripts]
+aw-watcher-system = "aw_watcher_system:main"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+aw-client = "^0.5.14"
+
+[tool.poetry.dev-dependencies]
+mypy = "*"
+pyinstaller = {version = "*", python = "^3.8,<3.14"}
+pytest = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
