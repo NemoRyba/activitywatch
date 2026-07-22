@@ -30,6 +30,8 @@ Run each setup as Administrator.
 
 Server setup installs `aw-server` to `C:\Program Files\ActivityWatch Fleet Server`, starts it on boot as a scheduled task, binds it to `0.0.0.0:5600`, and opens the Windows firewall for TCP 5600. Use `http://192.168.0.144:5600/` from the LAN.
 
+Re-running the server setup works as an update: it stops the existing installed Fleet Server scheduled task/process, overwrites the program files, and preserves runtime data under `C:\ProgramData\ActivityWatchFleet`.
+
 Watcher setup installs AFK, window, and session watchers to `C:\Program Files\ActivityWatch Fleet Watchers`. It creates an all-users Startup shortcut so the watchers start inside every logged-in user's desktop session. Watcher retry queues remain in each user's local ActivityWatch data directory, so temporary server/network outages are retried.
 
 ## Verify

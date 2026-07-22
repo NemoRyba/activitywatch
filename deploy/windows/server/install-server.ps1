@@ -14,6 +14,76 @@ function Test-IsAdmin {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+function Get-InstalledServerProcesses {
+    param(
+        [string]$ServerExe,
+        [string]$PidFile
+    )
+
+    $processes = @()
+    $serverExePath = [IO.Path]::GetFullPath($ServerExe)
+
+    if (Test-Path $PidFile) {
+        try {
+            $existingPid = [int](Get-Content $PidFile -Raw)
+            $existing = Get-CimInstance Win32_Process -Filter "ProcessId=$existingPid" -ErrorAction SilentlyContinue
+            if ($existing) {
+                $processes += $existing
+            }
+        } catch {
+            Write-Warning "Ignoring stale ActivityWatch Fleet Server PID file: $($_.Exception.Message)"
+        }
+    }
+
+    if (Test-Path $ServerExe) {
+        $processes += Get-CimInstance Win32_Process | Where-Object {
+            $_.ExecutablePath -and [string]::Equals(
+                $_.ExecutablePath,
+                $serverExePath,
+                [System.StringComparison]::OrdinalIgnoreCase
+            )
+        }
+    }
+
+    return $processes | Sort-Object ProcessId -Unique
+}
+
+function Stop-ExistingServer {
+    param([string]$InstallDir)
+
+    $taskName = "ActivityWatch Fleet Server"
+    $serverExe = Join-Path $InstallDir "aw-server\aw-server.exe"
+    $runtimeRoot = Join-Path ${env:ProgramData} "ActivityWatchFleet"
+    $pidFile = Join-Path $runtimeRoot "pids\server.pid"
+
+    $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    if ($task) {
+        try {
+            Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+            Write-Host "Stopped existing ActivityWatch Fleet Server scheduled task."
+        } catch {
+            Write-Warning "Could not stop existing scheduled task '$taskName': $($_.Exception.Message)"
+        }
+    }
+
+    $processes = @(Get-InstalledServerProcesses -ServerExe $serverExe -PidFile $pidFile)
+    foreach ($process in $processes) {
+        try {
+            Stop-Process -Id $process.ProcessId -ErrorAction SilentlyContinue
+            Wait-Process -Id $process.ProcessId -Timeout 10 -ErrorAction SilentlyContinue
+        } catch {
+            Write-Warning "Could not gracefully stop ActivityWatch Fleet Server PID $($process.ProcessId): $($_.Exception.Message)"
+        }
+
+        if (Get-Process -Id $process.ProcessId -ErrorAction SilentlyContinue) {
+            Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+            Wait-Process -Id $process.ProcessId -Timeout 10 -ErrorAction SilentlyContinue
+        }
+
+        Write-Host "Stopped existing ActivityWatch Fleet Server PID $($process.ProcessId)."
+    }
+}
+
 if (-not $AllowNonAdmin -and -not (Test-IsAdmin)) {
     Write-Error "Run this setup as Administrator. It installs to Program Files, creates a startup task, and opens firewall port 5600."
     exit 1
@@ -23,6 +93,8 @@ $payload = Join-Path $PSScriptRoot "payload.zip"
 if (-not (Test-Path $payload)) {
     throw "Missing payload.zip next to install-server.ps1"
 }
+
+Stop-ExistingServer -InstallDir $InstallDir
 
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 Expand-Archive -Path $payload -DestinationPath $InstallDir -Force
