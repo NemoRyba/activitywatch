@@ -13,6 +13,54 @@ function Test-IsAdmin {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+function Register-WatcherSupervisorTask {
+    param([string]$InstallDir)
+
+    $taskName = "ActivityWatch Fleet Watchers Supervisor"
+    $powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+    $supervisorScript = Join-Path $InstallDir "supervise-watchers.ps1"
+
+    if (-not (Test-Path $supervisorScript)) {
+        throw "Watcher supervisor script not found at $supervisorScript"
+    }
+
+    $action = New-ScheduledTaskAction `
+        -Execute $powershell `
+        -Argument ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}"' -f $supervisorScript) `
+        -WorkingDirectory $InstallDir
+
+    $startupTrigger = New-ScheduledTaskTrigger -AtStartup
+    $logonTrigger = New-ScheduledTaskTrigger -AtLogOn
+    $repeatingTrigger = New-ScheduledTaskTrigger `
+        -Once `
+        -At (Get-Date).AddMinutes(1) `
+        -RepetitionInterval (New-TimeSpan -Minutes 1) `
+        -RepetitionDuration (New-TimeSpan -Days 3650)
+
+    $principal = New-ScheduledTaskPrincipal `
+        -UserId "SYSTEM" `
+        -LogonType ServiceAccount `
+        -RunLevel Highest
+
+    $settings = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries `
+        -ExecutionTimeLimit (New-TimeSpan -Minutes 2) `
+        -MultipleInstances IgnoreNew `
+        -StartWhenAvailable
+
+    Register-ScheduledTask `
+        -TaskName $taskName `
+        -Action $action `
+        -Trigger @($startupTrigger, $logonTrigger, $repeatingTrigger) `
+        -Principal $principal `
+        -Settings $settings `
+        -Description "Starts ActivityWatch Fleet watchers in every active interactive user session." `
+        -Force | Out-Null
+
+    Start-ScheduledTask -TaskName $taskName
+    Write-Host "Registered and started scheduled task '$taskName'."
+}
+
 function Stop-ExistingWatcherProcesses {
     param([string]$InstallDir)
 
@@ -55,7 +103,7 @@ function Stop-ExistingWatcherProcesses {
 }
 
 if (-not $AllowNonAdmin -and -not (Test-IsAdmin)) {
-    Write-Error "Run this setup as Administrator. It installs to Program Files and creates an all-users startup shortcut."
+    Write-Error "Run this setup as Administrator. It installs to Program Files and creates a machine-level watcher supervisor scheduled task."
     exit 1
 }
 
@@ -83,7 +131,9 @@ if (-not $SkipStartup) {
 }
 
 if (-not $NoStart) {
-    & (Join-Path $InstallDir "start-watchers.ps1")
+    Register-WatcherSupervisorTask -InstallDir $InstallDir
+} else {
+    Write-Host "Skipping watcher supervisor registration because -NoStart was used."
 }
 
 Write-Host "ActivityWatch Fleet Watchers installed to $InstallDir"

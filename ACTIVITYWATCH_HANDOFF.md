@@ -23,7 +23,8 @@ Deployment behavior:
 - server binds to `0.0.0.0:5600` so the web UI/API can be reached from the LAN
 - server runtime data is redirected to `C:\ProgramData\ActivityWatchFleet`
 - watcher setup installs AFK/window/session watchers to `C:\Program Files\ActivityWatch Fleet Watchers`
-- watcher setup creates an all-users Startup shortcut so watchers start for every interactive Windows user login
+- watcher setup registers scheduled task `ActivityWatch Fleet Watchers Supervisor` as `SYSTEM`; it launches the watcher trio inside every active interactive user session and repeats once per minute to catch fast-user-switching/new logons
+- watcher setup also creates an all-users Startup shortcut as a fallback
 - watchers use central mode against `192.168.0.144:5600`
 - watcher request queues are file backed through `aw-client`, so temporary server/network outages are retried after the server returns
 
@@ -78,7 +79,8 @@ Latest server summary fix:
 
 Current local notes:
 
-- deployment setup EXEs were rebuilt after the 2026-07-22 compact event category-rule creator update
+- deployment setup EXEs were rebuilt after the 2026-07-22 fleet UI/raw event updates
+- watcher setup was changed after a deployment bug where rerunning setup under one/admin user only started the installer user's watchers; the fixed setup uses the SYSTEM supervisor task to start watchers in each active logged-in user's own Windows session
 - root `backups\` contains local runtime cleanup exports and is intentionally not part of the deployment build
 
 ## 1. Fork Goal

@@ -24,11 +24,28 @@ function Start-Watcher {
         throw "$Key executable not found at $exe"
     }
 
+    $currentSessionId = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").SessionId
+    $existingInSession = Get-CimInstance Win32_Process | Where-Object {
+        $_.ExecutablePath -and
+        [string]::Equals($_.ExecutablePath, $exe, [System.StringComparison]::OrdinalIgnoreCase) -and
+        $_.SessionId -eq $currentSessionId
+    } | Select-Object -First 1
+
+    if ($existingInSession) {
+        Set-Content -Path (Join-Path $pidsDir "$Key.pid") -Value $existingInSession.ProcessId
+        Write-Host "$Key already running in session $currentSessionId as PID $($existingInSession.ProcessId)"
+        return
+    }
+
     $pidFile = Join-Path $pidsDir "$Key.pid"
     if (Test-Path $pidFile) {
         $existingPid = [int](Get-Content $pidFile -Raw)
         $existing = Get-CimInstance Win32_Process -Filter "ProcessId=$existingPid" -ErrorAction SilentlyContinue
-        if ($existing -and [string]::Equals($existing.ExecutablePath, $exe, [System.StringComparison]::OrdinalIgnoreCase)) {
+        if (
+            $existing -and
+            [string]::Equals($existing.ExecutablePath, $exe, [System.StringComparison]::OrdinalIgnoreCase) -and
+            $existing.SessionId -eq $currentSessionId
+        ) {
             Write-Host "$Key already running as PID $existingPid"
             return
         }

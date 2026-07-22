@@ -32,9 +32,9 @@ Server setup installs `aw-server` to `C:\Program Files\ActivityWatch Fleet Serve
 
 Re-running the server setup works as an update: it stops the existing installed Fleet Server scheduled task/process, overwrites the program files, and preserves runtime data under `C:\ProgramData\ActivityWatchFleet`.
 
-Watcher setup installs AFK, window, and session watchers to `C:\Program Files\ActivityWatch Fleet Watchers`. It creates an all-users Startup shortcut so the watchers start inside every logged-in user's desktop session. Watcher retry queues remain in each user's local ActivityWatch data directory, so temporary server/network outages are retried.
+Watcher setup installs AFK, window, and session watchers to `C:\Program Files\ActivityWatch Fleet Watchers`. It creates a machine-level scheduled supervisor task named `ActivityWatch Fleet Watchers Supervisor` which runs as `SYSTEM`, checks active interactive sessions, and starts the watcher trio inside each logged-in user's own session. It also keeps an all-users Startup shortcut as a fallback. Watcher retry queues remain in each user's local ActivityWatch data directory, so temporary server/network outages are retried.
 
-Re-running the watcher setup works as an update: it stops existing installed watcher processes, overwrites the program files, recreates the all-users Startup shortcut, and preserves each user's local retry queues/logs.
+Re-running the watcher setup works as an update: it stops existing installed watcher processes, overwrites the program files, recreates the supervisor scheduled task and all-users Startup shortcut, and preserves each user's local retry queues/logs. The setup does not need to be run separately for each Windows user.
 
 ## Verify
 

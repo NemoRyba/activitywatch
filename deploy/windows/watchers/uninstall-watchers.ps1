@@ -4,6 +4,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$taskName = "ActivityWatch Fleet Watchers Supervisor"
+Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+
 $startupDir = [Environment]::GetFolderPath("CommonStartup")
 $shortcutPath = Join-Path $startupDir "ActivityWatch Fleet Watchers.lnk"
 if (Test-Path $shortcutPath) {
