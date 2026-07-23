@@ -547,3 +547,15 @@ That roadmap still reflects the intended direction well, but this handoff is the
 - Single-device fleet view now has a hidden-by-default system-load graph tied to the selected date range.
 - Fleet user watcher timeline now has the same optional system-load graph for the currently selected devices and range, so activity events can be compared with CPU/RAM spikes.
 - Raw `systemmetrics` buckets are hidden from the watcher timeline rows; system data is shown through the wave graph instead.
+
+### 2026-07-23 fleet summary navigation and setup refresh
+
+- Fleet user range controls now show previous-day and next-day shortcuts above the date inputs; next-day is disabled once the selected end date is today.
+- Fleet user summary now displays the overlap-collapsed active session time directly above the `Timeline (barchart)` panel. This uses `user.totals.active_seconds`, which is calculated by merging active session intervals across selected devices so overlapping active sessions count once.
+- Verified the overlap behavior with:
+  - `test_fleet_user_summary_merges_overlapping_state_events`
+  - `test_fleet_user_summary_unions_active_sessions_across_devices`
+- Fresh Windows setup EXEs were rebuilt after copying the web build into `aw-server/aw_server/static` and rebuilding `aw-server/dist/aw-server`.
+- Latest setup hashes:
+  - Server: `EA01182622F7335DD2E1AF41B1462DEBA9C100B8B515E9C95AA92813CBF1D86E`
+  - Watchers: `784E854FCDA42BBB617938371E3C63208F4460757A8BB5041B8AA4DB51C218C6`
