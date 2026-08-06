@@ -23,13 +23,13 @@ Current validated output names:
 - `dist\deployment\ActivityWatch-Fleet-Server-Setup.exe`
 - `dist\deployment\ActivityWatch-Fleet-Watchers-Setup.exe`
 
-Latest validated build, local time 2026-07-23 02:01:
+Latest validated build, local time 2026-08-06 19:09:
 
 - Server setup SHA256:
-  `EA01182622F7335DD2E1AF41B1462DEBA9C100B8B515E9C95AA92813CBF1D86E`
+  `6D4D71DF6FAACD8FB3B8F8C6644CFB3C8E9BA18F34BD455263325CAB8BF837CD`
 - Watchers setup SHA256:
-  `784E854FCDA42BBB617938371E3C63208F4460757A8BB5041B8AA4DB51C218C6`
-- Included UI state: fleet user next/previous day shortcuts, overlap-collapsed active session total above the bar chart, optional CPU/RAM system-load waves in device/user timeline views, LDAP admin settings.
+  `AC31D275A6B0E6EF474B4A39705FBFAAF46B30875A03F4A535EE8DA5B32EEB9D`
+- Included UI state: fleet user next/previous day shortcuts, overlap-collapsed not-AFK active session total above the bar chart, active session time in timeline tooltips, optional CPU/RAM system-load waves in device/user timeline views, LDAP admin settings.
 
 If the web UI changed, rebuild `aw-server\aw-webui` and copy the built assets into `aw-server\aw_server\static` before rebuilding these setup files.
 
