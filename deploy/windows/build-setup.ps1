@@ -156,6 +156,69 @@ function Wait-ForFile {
     throw "Timed out waiting for file: $Path"
 }
 
+function Wait-ForStableFile {
+    param(
+        [string]$Path,
+        [int]$TimeoutSeconds = 60
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $lastLength = -1
+    $stableCount = 0
+    while ((Get-Date) -lt $deadline) {
+        if (-not (Test-Path $Path)) {
+            Start-Sleep -Milliseconds 500
+            continue
+        }
+
+        $length = (Get-Item -LiteralPath $Path).Length
+        if ($length -eq $lastLength) {
+            $stableCount += 1
+            if ($stableCount -ge 4) {
+                return
+            }
+        } else {
+            $lastLength = $length
+            $stableCount = 0
+        }
+        Start-Sleep -Milliseconds 500
+    }
+
+    throw "Timed out waiting for stable file: $Path"
+}
+
+function Complete-IExpressOutput {
+    param(
+        [string]$Path,
+        [int64]$MinimumBytes = 1048576
+    )
+
+    Wait-ForFile -Path $Path
+    Wait-ForStableFile -Path $Path
+
+    $output = Get-Item -LiteralPath $Path
+    if ($output.Length -lt $MinimumBytes) {
+        $outputDir = Split-Path -Parent $Path
+        $candidate = Get-ChildItem -LiteralPath $outputDir -Filter "RCX*.tmp" -File |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+
+        if ($candidate -and $candidate.Length -ge $MinimumBytes) {
+            Wait-ForStableFile -Path $candidate.FullName
+            Move-Item -LiteralPath $candidate.FullName -Destination $Path -Force
+            $output = Get-Item -LiteralPath $Path
+        }
+    }
+
+    if ($output.Length -lt $MinimumBytes) {
+        throw "IExpress output looks incomplete: $Path ($($output.Length) bytes)"
+    }
+
+    $baseName = [IO.Path]::GetFileNameWithoutExtension($Path)
+    Get-ChildItem -LiteralPath (Split-Path -Parent $Path) -Filter "~$baseName*.CAB" -File |
+        Remove-Item -Force
+}
+
 $serverSetup = Join-Path $distRoot "ActivityWatch-Fleet-Server-Setup.exe"
 $watchersSetup = Join-Path $distRoot "ActivityWatch-Fleet-Watchers-Setup.exe"
 $iexpress = (Get-Command iexpress.exe -ErrorAction Stop).Source
@@ -175,9 +238,9 @@ New-IExpressSed `
     -SedPath (Join-Path $distRoot "watchers-setup.sed")
 
 & $iexpress /N /Q (Join-Path $distRoot "server-setup.sed")
-Wait-ForFile -Path $serverSetup
+Complete-IExpressOutput -Path $serverSetup
 & $iexpress /N /Q (Join-Path $distRoot "watchers-setup.sed")
-Wait-ForFile -Path $watchersSetup
+Complete-IExpressOutput -Path $watchersSetup
 
 Write-Host "Created $serverSetup"
 Write-Host "Created $watchersSetup"

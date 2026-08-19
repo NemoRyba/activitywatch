@@ -138,36 +138,98 @@ function Select-RuntimeRootWithDialog {
 
     try {
         Add-Type -AssemblyName System.Windows.Forms
+        Add-Type -AssemblyName System.Drawing
     } catch {
         Write-Warning "Could not load Windows Forms for data location prompt; keeping $CurrentRuntimeRoot"
         return $CurrentRuntimeRoot
     }
 
-    $message = @"
-ActivityWatch Fleet Server already has an existing data location:
+    $timeoutSeconds = 30
+    $state = @{ Remaining = $timeoutSeconds }
 
-$CurrentRuntimeRoot
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "ActivityWatch Fleet Server data location"
+    $form.StartPosition = "CenterScreen"
+    $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
+    $form.MaximizeBox = $false
+    $form.MinimizeBox = $false
+    $form.ClientSize = New-Object System.Drawing.Size(620, 230)
 
-Do you want to move the database and runtime data to a different folder now?
+    $messageLabel = New-Object System.Windows.Forms.Label
+    $messageLabel.Location = New-Object System.Drawing.Point(16, 16)
+    $messageLabel.Size = New-Object System.Drawing.Size(588, 108)
+    $messageLabel.Text = "ActivityWatch Fleet Server already has an existing data location:`r`n`r`n$CurrentRuntimeRoot`r`n`r`nLeave the box unchecked to keep the current database and continue the update."
+    $form.Controls.Add($messageLabel)
 
-Choose Yes to select an empty target folder.
-Choose No to keep the current location.
-Choose Cancel to abort setup.
-"@
+    $moveCheckbox = New-Object System.Windows.Forms.CheckBox
+    $moveCheckbox.Location = New-Object System.Drawing.Point(20, 128)
+    $moveCheckbox.Size = New-Object System.Drawing.Size(560, 24)
+    $moveCheckbox.Text = "Move database and runtime data to a different empty folder"
+    $moveCheckbox.Checked = $false
+    $form.Controls.Add($moveCheckbox)
 
-    $choice = [System.Windows.Forms.MessageBox]::Show(
-        $message,
-        "ActivityWatch Fleet Server data location",
-        [System.Windows.Forms.MessageBoxButtons]::YesNoCancel,
-        [System.Windows.Forms.MessageBoxIcon]::Question
-    )
+    $countdownLabel = New-Object System.Windows.Forms.Label
+    $countdownLabel.Location = New-Object System.Drawing.Point(20, 160)
+    $countdownLabel.Size = New-Object System.Drawing.Size(360, 22)
+    $countdownLabel.Text = "Continuing without moving data in $timeoutSeconds seconds."
+    $form.Controls.Add($countdownLabel)
 
-    if ($choice -eq [System.Windows.Forms.DialogResult]::No) {
-        return $CurrentRuntimeRoot
-    }
+    $continueButton = New-Object System.Windows.Forms.Button
+    $continueButton.Location = New-Object System.Drawing.Point(404, 158)
+    $continueButton.Size = New-Object System.Drawing.Size(95, 28)
+    $continueButton.Text = "Continue"
+    $continueButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $form.Controls.Add($continueButton)
+
+    $cancelButton = New-Object System.Windows.Forms.Button
+    $cancelButton.Location = New-Object System.Drawing.Point(509, 158)
+    $cancelButton.Size = New-Object System.Drawing.Size(95, 28)
+    $cancelButton.Text = "Cancel"
+    $cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    $form.Controls.Add($cancelButton)
+
+    $form.AcceptButton = $continueButton
+    $form.CancelButton = $cancelButton
+
+    $timer = New-Object System.Windows.Forms.Timer
+    $timer.Interval = 1000
+    $timer.Add_Tick({
+        $state.Remaining = [int]$state.Remaining - 1
+        if ($state.Remaining -le 0) {
+            $timer.Stop()
+            $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
+            $form.Close()
+            return
+        }
+
+        $countdownLabel.Text = "Continuing without moving data in $($state.Remaining) seconds."
+    })
+
+    $moveCheckbox.Add_CheckedChanged({
+        if ($moveCheckbox.Checked) {
+            $timer.Stop()
+            $countdownLabel.Text = "Click Continue to choose an empty folder for the moved data."
+            return
+        }
+
+        $state.Remaining = $timeoutSeconds
+        $countdownLabel.Text = "Continuing without moving data in $timeoutSeconds seconds."
+        $timer.Start()
+    })
+
+    $timer.Start()
+    $choice = $form.ShowDialog()
+    $moveRequested = $moveCheckbox.Checked
+    $timer.Stop()
+    $timer.Dispose()
+    $form.Dispose()
 
     if ($choice -eq [System.Windows.Forms.DialogResult]::Cancel) {
         throw "Setup cancelled by user."
+    }
+
+    if (-not $moveRequested) {
+        return $CurrentRuntimeRoot
     }
 
     while ($true) {
