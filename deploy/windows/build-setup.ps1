@@ -1,6 +1,8 @@
 param(
     [string]$ServerHost = "192.168.0.144",
-    [int]$ServerPort = 5600
+    [int]$ServerPort = 5600,
+    [ValidateSet("All", "Server", "Watchers")]
+    [string]$Target = "All"
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,6 +13,10 @@ $serverPayload = Join-Path $distRoot "server-payload"
 $watchersPayload = Join-Path $distRoot "watchers-payload"
 $serverIexpress = Join-Path $distRoot "server-iexpress"
 $watchersIexpress = Join-Path $distRoot "watchers-iexpress"
+$serverSetup = Join-Path $distRoot "ActivityWatch-Fleet-Server-Setup.exe"
+$watchersSetup = Join-Path $distRoot "ActivityWatch-Fleet-Watchers-Setup.exe"
+$buildServer = $Target -in @("All", "Server")
+$buildWatchers = $Target -in @("All", "Watchers")
 
 function Assert-UnderRepo {
     param([string]$Path)
@@ -21,20 +27,57 @@ function Assert-UnderRepo {
 }
 
 Assert-UnderRepo $distRoot
-if (Test-Path $distRoot) {
+if ($Target -eq "All" -and (Test-Path $distRoot)) {
     Remove-Item -LiteralPath $distRoot -Recurse -Force
+} elseif (Test-Path $distRoot) {
+    $pathsToRemove = @()
+    if ($buildServer) {
+        $pathsToRemove += @(
+            $serverPayload,
+            $serverIexpress,
+            $serverSetup,
+            (Join-Path $distRoot "server-setup.sed")
+        )
+    }
+    if ($buildWatchers) {
+        $pathsToRemove += @(
+            $watchersPayload,
+            $watchersIexpress,
+            $watchersSetup,
+            (Join-Path $distRoot "watchers-setup.sed")
+        )
+    }
+    foreach ($path in $pathsToRemove) {
+        Assert-UnderRepo $path
+        if (Test-Path $path) {
+            Remove-Item -LiteralPath $path -Recurse -Force
+        }
+    }
 }
 
-New-Item -ItemType Directory -Force -Path $serverPayload, $watchersPayload, $serverIexpress, $watchersIexpress | Out-Null
+New-Item -ItemType Directory -Force -Path $distRoot | Out-Null
+$dirsToCreate = @()
+if ($buildServer) {
+    $dirsToCreate += @($serverPayload, $serverIexpress)
+}
+if ($buildWatchers) {
+    $dirsToCreate += @($watchersPayload, $watchersIexpress)
+}
+New-Item -ItemType Directory -Force -Path $dirsToCreate | Out-Null
 
-$requiredDirs = @(
-    "aw-server\dist\aw-server",
-    "aw-watcher-afk\dist\aw-watcher-afk",
-    "aw-watcher-window\dist\aw-watcher-window",
-    "aw-watcher-session\dist\aw-watcher-session",
-    "aw-watcher-audio\dist\aw-watcher-audio",
-    "aw-watcher-system\dist\aw-watcher-system"
-)
+$requiredDirs = @()
+if ($buildServer) {
+    $requiredDirs += "aw-server\dist\aw-server"
+}
+if ($buildWatchers) {
+    $requiredDirs += @(
+        "aw-watcher-afk\dist\aw-watcher-afk",
+        "aw-watcher-window\dist\aw-watcher-window",
+        "aw-watcher-session\dist\aw-watcher-session",
+        "aw-watcher-audio\dist\aw-watcher-audio",
+        "aw-watcher-system\dist\aw-watcher-system"
+    )
+}
 foreach ($dir in $requiredDirs) {
     $path = Join-Path $repoRoot $dir
     if (-not (Test-Path $path)) {
@@ -42,21 +85,25 @@ foreach ($dir in $requiredDirs) {
     }
 }
 
-Copy-Item -Path (Join-Path $repoRoot "aw-server\dist\aw-server") -Destination (Join-Path $serverPayload "aw-server") -Recurse -Force
-Copy-Item -Path (Join-Path $PSScriptRoot "server\start-server.ps1") -Destination $serverPayload -Force
-Copy-Item -Path (Join-Path $PSScriptRoot "server\stop-server.ps1") -Destination $serverPayload -Force
-Copy-Item -Path (Join-Path $PSScriptRoot "server\uninstall-server.ps1") -Destination $serverPayload -Force
+if ($buildServer) {
+    Copy-Item -Path (Join-Path $repoRoot "aw-server\dist\aw-server") -Destination (Join-Path $serverPayload "aw-server") -Recurse -Force
+    Copy-Item -Path (Join-Path $PSScriptRoot "server\start-server.ps1") -Destination $serverPayload -Force
+    Copy-Item -Path (Join-Path $PSScriptRoot "server\stop-server.ps1") -Destination $serverPayload -Force
+    Copy-Item -Path (Join-Path $PSScriptRoot "server\uninstall-server.ps1") -Destination $serverPayload -Force
+}
 
-Copy-Item -Path (Join-Path $repoRoot "aw-watcher-afk\dist\aw-watcher-afk") -Destination (Join-Path $watchersPayload "aw-watcher-afk") -Recurse -Force
-Copy-Item -Path (Join-Path $repoRoot "aw-watcher-window\dist\aw-watcher-window") -Destination (Join-Path $watchersPayload "aw-watcher-window") -Recurse -Force
-Copy-Item -Path (Join-Path $repoRoot "aw-watcher-session\dist\aw-watcher-session") -Destination (Join-Path $watchersPayload "aw-watcher-session") -Recurse -Force
-Copy-Item -Path (Join-Path $repoRoot "aw-watcher-audio\dist\aw-watcher-audio") -Destination (Join-Path $watchersPayload "aw-watcher-audio") -Recurse -Force
-Copy-Item -Path (Join-Path $repoRoot "aw-watcher-system\dist\aw-watcher-system") -Destination (Join-Path $watchersPayload "aw-watcher-system") -Recurse -Force
-Copy-Item -Path (Join-Path $PSScriptRoot "watchers\start-watchers.ps1") -Destination $watchersPayload -Force
-Copy-Item -Path (Join-Path $PSScriptRoot "watchers\supervise-watchers.ps1") -Destination $watchersPayload -Force
-Copy-Item -Path (Join-Path $PSScriptRoot "watchers\start-system-watcher.ps1") -Destination $watchersPayload -Force
-Copy-Item -Path (Join-Path $PSScriptRoot "watchers\stop-watchers.ps1") -Destination $watchersPayload -Force
-Copy-Item -Path (Join-Path $PSScriptRoot "watchers\uninstall-watchers.ps1") -Destination $watchersPayload -Force
+if ($buildWatchers) {
+    Copy-Item -Path (Join-Path $repoRoot "aw-watcher-afk\dist\aw-watcher-afk") -Destination (Join-Path $watchersPayload "aw-watcher-afk") -Recurse -Force
+    Copy-Item -Path (Join-Path $repoRoot "aw-watcher-window\dist\aw-watcher-window") -Destination (Join-Path $watchersPayload "aw-watcher-window") -Recurse -Force
+    Copy-Item -Path (Join-Path $repoRoot "aw-watcher-session\dist\aw-watcher-session") -Destination (Join-Path $watchersPayload "aw-watcher-session") -Recurse -Force
+    Copy-Item -Path (Join-Path $repoRoot "aw-watcher-audio\dist\aw-watcher-audio") -Destination (Join-Path $watchersPayload "aw-watcher-audio") -Recurse -Force
+    Copy-Item -Path (Join-Path $repoRoot "aw-watcher-system\dist\aw-watcher-system") -Destination (Join-Path $watchersPayload "aw-watcher-system") -Recurse -Force
+    Copy-Item -Path (Join-Path $PSScriptRoot "watchers\start-watchers.ps1") -Destination $watchersPayload -Force
+    Copy-Item -Path (Join-Path $PSScriptRoot "watchers\supervise-watchers.ps1") -Destination $watchersPayload -Force
+    Copy-Item -Path (Join-Path $PSScriptRoot "watchers\start-system-watcher.ps1") -Destination $watchersPayload -Force
+    Copy-Item -Path (Join-Path $PSScriptRoot "watchers\stop-watchers.ps1") -Destination $watchersPayload -Force
+    Copy-Item -Path (Join-Path $PSScriptRoot "watchers\uninstall-watchers.ps1") -Destination $watchersPayload -Force
+}
 
 function Update-DeploymentScriptDefaults {
     param([string]$Path)
@@ -67,20 +114,29 @@ function Update-DeploymentScriptDefaults {
         Set-Content -Path $Path
 }
 
-foreach ($scriptName in @("start-server.ps1", "uninstall-server.ps1")) {
-    $scriptPath = Join-Path $serverPayload $scriptName
-    Update-DeploymentScriptDefaults -Path $scriptPath
+if ($buildServer) {
+    foreach ($scriptName in @("start-server.ps1", "uninstall-server.ps1")) {
+        $scriptPath = Join-Path $serverPayload $scriptName
+        Update-DeploymentScriptDefaults -Path $scriptPath
+    }
 }
 
-Update-DeploymentScriptDefaults -Path (Join-Path $watchersPayload "start-watchers.ps1")
-Update-DeploymentScriptDefaults -Path (Join-Path $watchersPayload "start-system-watcher.ps1")
+if ($buildWatchers) {
+    Update-DeploymentScriptDefaults -Path (Join-Path $watchersPayload "start-watchers.ps1")
+    Update-DeploymentScriptDefaults -Path (Join-Path $watchersPayload "start-system-watcher.ps1")
+}
 
-Compress-Archive -Path (Join-Path $serverPayload "*") -DestinationPath (Join-Path $serverIexpress "payload.zip") -Force
-Compress-Archive -Path (Join-Path $watchersPayload "*") -DestinationPath (Join-Path $watchersIexpress "payload.zip") -Force
-Copy-Item -Path (Join-Path $PSScriptRoot "server\install-server.ps1") -Destination $serverIexpress -Force
-Copy-Item -Path (Join-Path $PSScriptRoot "watchers\install-watchers.ps1") -Destination $watchersIexpress -Force
-Update-DeploymentScriptDefaults -Path (Join-Path $serverIexpress "install-server.ps1")
-Update-DeploymentScriptDefaults -Path (Join-Path $watchersIexpress "install-watchers.ps1")
+if ($buildServer) {
+    Compress-Archive -Path (Join-Path $serverPayload "*") -DestinationPath (Join-Path $serverIexpress "payload.zip") -Force
+    Copy-Item -Path (Join-Path $PSScriptRoot "server\install-server.ps1") -Destination $serverIexpress -Force
+    Update-DeploymentScriptDefaults -Path (Join-Path $serverIexpress "install-server.ps1")
+}
+
+if ($buildWatchers) {
+    Compress-Archive -Path (Join-Path $watchersPayload "*") -DestinationPath (Join-Path $watchersIexpress "payload.zip") -Force
+    Copy-Item -Path (Join-Path $PSScriptRoot "watchers\install-watchers.ps1") -Destination $watchersIexpress -Force
+    Update-DeploymentScriptDefaults -Path (Join-Path $watchersIexpress "install-watchers.ps1")
+}
 
 function New-IExpressSed {
     param(
@@ -219,29 +275,31 @@ function Complete-IExpressOutput {
         Remove-Item -Force
 }
 
-$serverSetup = Join-Path $distRoot "ActivityWatch-Fleet-Server-Setup.exe"
-$watchersSetup = Join-Path $distRoot "ActivityWatch-Fleet-Watchers-Setup.exe"
 $iexpress = (Get-Command iexpress.exe -ErrorAction Stop).Source
 
-New-IExpressSed `
-    -SourceDir $serverIexpress `
-    -TargetName $serverSetup `
-    -FriendlyName "ActivityWatch Fleet Server" `
-    -InstallScript "install-server.ps1" `
-    -SedPath (Join-Path $distRoot "server-setup.sed")
+if ($buildServer) {
+    New-IExpressSed `
+        -SourceDir $serverIexpress `
+        -TargetName $serverSetup `
+        -FriendlyName "ActivityWatch Fleet Server" `
+        -InstallScript "install-server.ps1" `
+        -SedPath (Join-Path $distRoot "server-setup.sed")
 
-New-IExpressSed `
-    -SourceDir $watchersIexpress `
-    -TargetName $watchersSetup `
-    -FriendlyName "ActivityWatch Fleet Watchers" `
-    -InstallScript "install-watchers.ps1" `
-    -SedPath (Join-Path $distRoot "watchers-setup.sed")
+    & $iexpress /N /Q (Join-Path $distRoot "server-setup.sed")
+    Complete-IExpressOutput -Path $serverSetup
+    Write-Host "Created $serverSetup"
+}
 
-& $iexpress /N /Q (Join-Path $distRoot "server-setup.sed")
-Complete-IExpressOutput -Path $serverSetup
-& $iexpress /N /Q (Join-Path $distRoot "watchers-setup.sed")
-Complete-IExpressOutput -Path $watchersSetup
+if ($buildWatchers) {
+    New-IExpressSed `
+        -SourceDir $watchersIexpress `
+        -TargetName $watchersSetup `
+        -FriendlyName "ActivityWatch Fleet Watchers" `
+        -InstallScript "install-watchers.ps1" `
+        -SedPath (Join-Path $distRoot "watchers-setup.sed")
 
-Write-Host "Created $serverSetup"
-Write-Host "Created $watchersSetup"
-Write-Host "Watchers are preconfigured for http://$($ServerHost):$ServerPort/"
+    & $iexpress /N /Q (Join-Path $distRoot "watchers-setup.sed")
+    Complete-IExpressOutput -Path $watchersSetup
+    Write-Host "Created $watchersSetup"
+    Write-Host "Watchers are preconfigured for http://$($ServerHost):$ServerPort/"
+}
