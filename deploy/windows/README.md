@@ -23,12 +23,12 @@ Current validated output names:
 - `dist\deployment\ActivityWatch-Fleet-Server-Setup.exe`
 - `dist\deployment\ActivityWatch-Fleet-Watchers-Setup.exe`
 
-Latest validated build, local time 2026-08-19 11:52:
+Latest validated build, local time 2026-08-19 12:16:
 
 - Server setup SHA256:
-  `F53AE6D13126C94ECA520FDF77044319C88C4776F93AED0148C8EAE35D41B810`
+  `41F55A76F8C8E4F260EF2845FC22232ED08A20313451D1C81865E79C1BA426BF`
 - Watchers setup SHA256:
-  `402D78DF629AB5910523FAAF0434111F181952D5629370987EB5CC8864211F58`
+  `6AF72FA248FFC68D6530A47A29C0D0FC16496B88D39B1B6A36FD638B052F2AF7`
 - Included UI state: fleet user next/previous day shortcuts, raw active session total with optional after-AFK total above the bar chart, ignored-category filter for excluding selected category paths and children from activity summaries/charts, click-to-categorize Uncategorized app rows in the category tree, always-visible compact total labels above each bar-chart bar plus full `Bar total` values in hover/click details, chart-coherent active-session tooltip values, pinned scrollable draggable/resizable bar-chart details window on chart/time-axis click, 3-second hover delay for transient chart tooltips, server-backed remembered Fleet user filter state per logged-in web user, max active-session AFK display/default for the short-AFK threshold, optional threshold for treating short AFK periods as active/non-AFK in summaries and watcher timelines, AFK data gaps counted as active only when clamped to overlapping session-watcher active intervals, timeline edit dialogs that preserve scroll position, packaged web UI logo assets, optional CPU/RAM system-load waves in device/user timeline views, LDAP admin settings. Fleet live summaries hide stale non-terminal sessions and only show AFK/window details from fresh watcher updates. The server installer uses a smoother data-location prompt with default keep-current-data behavior and a 30-second auto-continue timeout. The server payload was rebuilt with the lock-compatible `peewee 3.17.6` dependency.
 - The short-AFK threshold groups consecutive `afk -> afk -> ... -> not-afk` rows into one AFK period before deciding whether the period is short enough to ignore.
 - The fleet user filter includes an opt-in `Count AFK watcher gaps as active only inside active sessions` checkbox for counting active-session gaps with no AFK watcher coverage as non-AFK/active.
