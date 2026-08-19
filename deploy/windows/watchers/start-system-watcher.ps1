@@ -6,6 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $installDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$configPath = Join-Path $installDir "watchers.config.psd1"
 $runtimeRoot = Join-Path ${env:ProgramData} "ActivityWatchFleet"
 $logsDir = Join-Path $runtimeRoot "logs\watchers"
 $pidsDir = Join-Path $runtimeRoot "pids"
@@ -13,6 +14,25 @@ $exe = Join-Path $installDir "aw-watcher-system\aw-watcher-system.exe"
 $pidFile = Join-Path $pidsDir "aw-watcher-system.pid"
 
 New-Item -ItemType Directory -Force -Path $runtimeRoot, $logsDir, $pidsDir | Out-Null
+
+function Test-SystemWatcherSelected {
+    if (-not (Test-Path $configPath)) {
+        return $true
+    }
+
+    try {
+        $config = Import-PowerShellDataFile -Path $configPath
+        return @($config.SelectedWatchers) -contains "system"
+    } catch {
+        Write-Warning "Could not read watcher selection config at $configPath`: $($_.Exception.Message)"
+        return $true
+    }
+}
+
+if (-not (Test-SystemWatcherSelected)) {
+    Write-Host "CPU/RAM system watcher was not selected; nothing to start."
+    exit 0
+}
 
 if (-not (Test-Path $exe)) {
     throw "aw-watcher-system executable not found at $exe"
