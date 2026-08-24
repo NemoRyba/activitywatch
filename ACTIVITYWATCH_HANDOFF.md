@@ -19,11 +19,13 @@ Latest validated setup hashes:
 - Watchers setup SHA256:
   `6AF72FA248FFC68D6530A47A29C0D0FC16496B88D39B1B6A36FD638B052F2AF7`
 
-Latest pushed commit pointers on `central-fork`:
+Latest code/package commit pointers on `central-fork`:
 
-- root `activitywatch`: check `git log -1` after the final packaging/docs commit
+- root `activitywatch` package commit: `a46d415 Package long-range fleet loading fix`
 - nested `aw-server`: `7bb8216 Update web UI long-range fleet loading`
 - nested `aw-server/aw-webui`: `37d321c Defer heavy fleet user chart loading`
+
+This handoff may have a newer root docs-only commit after `a46d415`; the setup hash above is the reliable identity for the packaged server installer.
 
 The watcher setup is preconfigured for:
 
@@ -549,6 +551,7 @@ That roadmap still reflects the intended direction well, but this handoff is the
 - Packaged server payload check: `aw-server/dist/aw-server/aw-server.exe --version` returned `v0.13.2.dev+e5983e5`.
 - Latest server setup SHA256: `5999E4ABFB64A75166FA1CDD2FA6C7CB714702726C1C9EE450EFF0CAF252A328`.
 - Watcher setup was intentionally not rebuilt; its SHA256 stayed `6AF72FA248FFC68D6530A47A29C0D0FC16496B88D39B1B6A36FD638B052F2AF7`.
+- Root package commit for that installer: `a46d415 Package long-range fleet loading fix`. Any newer root commit can be treated as documentation-only unless its diff says otherwise.
 - PyInstaller on this machine may fail with access denied resolving `C:\Users\mstep` or `\\dc\profiles$\mstep`. The successful run used local build env overrides:
 
 ```powershell
