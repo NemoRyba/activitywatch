@@ -388,20 +388,37 @@ function Stop-ExistingServer {
     }
 
     $processes = @(Get-InstalledServerProcesses -ServerExe $serverExe -PidFile $pidFile)
-    foreach ($process in $processes) {
-        try {
-            Stop-Process -Id $process.ProcessId -ErrorAction SilentlyContinue
-            Wait-Process -Id $process.ProcessId -Timeout 10 -ErrorAction SilentlyContinue
-        } catch {
-            Write-Warning "Could not gracefully stop ActivityWatch Fleet Server PID $($process.ProcessId): $($_.Exception.Message)"
-        }
+    if ($processes.Count -eq 0) {
+        return
+    }
 
-        if (Get-Process -Id $process.ProcessId -ErrorAction SilentlyContinue) {
-            Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
-            Wait-Process -Id $process.ProcessId -Timeout 10 -ErrorAction SilentlyContinue
-        }
+    # One Stop-Process invocation for every PID: PowerShell scopes "Yes to All" to a
+    # single cmdlet invocation, so a per-process loop would re-prompt for each PID.
+    $processIds = @($processes | ForEach-Object { [int]$_.ProcessId })
 
-        Write-Host "Stopped existing ActivityWatch Fleet Server PID $($process.ProcessId)."
+    try {
+        Stop-Process -Id $processIds -ErrorAction SilentlyContinue
+    } catch {
+        Write-Warning "Could not gracefully stop existing ActivityWatch Fleet Server processes: $($_.Exception.Message)"
+    }
+
+    Wait-Process -Id $processIds -Timeout 10 -ErrorAction SilentlyContinue
+
+    $survivors = @(
+        $processIds | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue }
+    )
+
+    if ($survivors.Count -gt 0) {
+        Stop-Process -Id $survivors -Force -Confirm:$false -ErrorAction SilentlyContinue
+        Wait-Process -Id $survivors -Timeout 10 -ErrorAction SilentlyContinue
+    }
+
+    foreach ($processId in $processIds) {
+        if (Get-Process -Id $processId -ErrorAction SilentlyContinue) {
+            Write-Warning "ActivityWatch Fleet Server PID $processId is still running."
+        } else {
+            Write-Host "Stopped existing ActivityWatch Fleet Server PID $processId."
+        }
     }
 }
 
