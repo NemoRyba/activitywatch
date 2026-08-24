@@ -15,17 +15,17 @@ Validated outputs:
 Latest validated setup hashes:
 
 - Server setup SHA256:
-  `E15E28E752804D759AEC56681A3622FC64A36E61364CE9A8A0B96362E9DF9608`
+  `2827B43BECA42CE19F8C8126BBCE50555E7748C54CB2122F1046622B23768C5E`
 - Watchers setup SHA256:
-  `6AF72FA248FFC68D6530A47A29C0D0FC16496B88D39B1B6A36FD638B052F2AF7`
+  `F53C57C8758295B411E2B577DE50CE95D8AFDE592BDF62C2466C8C875A354AA3`
 
 Latest code/package commit pointers on `central-fork`:
 
-- root `activitywatch` package commit: `0c657eb Package aggregate fleet chart fix`
-- nested `aw-server`: `3a4762b Add aggregate fleet activity endpoint`
-- nested `aw-server/aw-webui`: `e183471 Render aggregate fleet charts for long ranges`
+- root `activitywatch` package commit: `5d3e69d Package trimmed nav, audited editing, and daily comparison`
+- nested `aw-server`: `5a85a76 Add event audit trail, Redmine daily comparison, chunked summaries`
+- nested `aw-server/aw-webui`: `9479883 Replace settings state on load instead of merging`
 
-This handoff may have a newer root docs-only commit after `0c657eb`; the setup hash above is the reliable identity for the packaged server installer.
+This handoff may have a newer root docs-only commit after `5d3e69d`; the setup hash above is the reliable identity for the packaged server installer.
 
 The watcher setup is preconfigured for:
 
@@ -44,6 +44,11 @@ Deployment behavior:
 - watcher setup stages the per-user audio watcher and the system CPU/RAM watcher; CPU/RAM runs through a machine-level scheduled task named `ActivityWatch Fleet System Watcher`
 - watchers use central mode against `192.168.0.144:5600`
 - watcher request queues are file backed through `aw-client`, so temporary server/network outages are retried after the server returns
+- both setups now self-elevate: running them without admin rights triggers a UAC prompt instead of an error, and the elevated window stays open until Enter
+- the watcher setup waits (default 60s, `-StartupTimeoutSeconds`) for the watchers to come up and starts any the supervisor missed directly in the installing user's session
+- the watcher supervisor logs every run to `C:\ProgramData\ActivityWatchFleet\logs\supervisor.log`, including each enumerated session and why one was skipped
+- `diagnose-watchers.cmd` at the repo root collects a full watcher-state report from a deployed machine into `watcher-diagnostics.txt`
+- the web UI nav is trimmed for fleet use: no Activity menu, no Tools ("Werkzeuge") menu, and no external links in the footer; the routes behind them still work by direct URL
 
 Validation done on this working machine:
 
@@ -53,7 +58,7 @@ Validation done on this working machine:
 - packaged `aw-server.exe --version` returns `v0.13.2.dev+e5983e5`
 - packaged server starts on a test port and returns `/api/0/info`
 - deployment setup builder completed successfully for the server setup after the latest web UI change
-- watcher setup was not rebuilt for the latest server-only UI update
+- both setups were rebuilt on 2026-08-24 after the navigation cleanup; the watcher setup hash changed too
 - non-admin smoke install into temp folders passed for both payloads
 
 Important deployment caveats:
@@ -537,6 +542,26 @@ That roadmap still reflects the intended direction well, but this handoff is the
 
 ## 10. Latest Local Work Notes
 
+### 2026-08-24 web UI chrome cleanup (footer links, Activity menu, Tools menu)
+
+- Footer: removed all six external links (Report a bug / Ask for help / Vote on features / Twitter / GitHub / Donate) and their icon imports from `Footer.vue`. The footer now shows only the `Host:` / `Version:` line.
+- Header: removed the `Activity` top-left menu entry in both forms (the single-view `b-nav-item` and the multi-host dropdown with its Loading / "No activity reports available" / per-host items). The nav now starts at Timeline, then Fleet.
+- Header: removed the `Tools` ("Werkzeuge") dropdown entirely (Search, Trends, Report, Alerts, Timespiral, Query, Graph) plus its eight now-unused icon imports.
+- Header: also removed the "Show tools menu" switch from the Admin-settings modal, because it would otherwise toggle a menu that no longer exists. The `show_tools_menu` value is still read into the draft and written back on save, so nothing is clobbered server-side and the menu can be restored by reverting the template alone.
+- The routes behind the removed entries (`/activity/<host>`, `/search`, `/query`, `/trends`, `/report`, `/alerts`, `/timespiral`, `/graph`) are still registered and reachable by direct URL. Only the menu chrome was removed.
+- `Header.vue` still computes `activityViews` in `mounted`; it is dead data for the removed menu, kept because the same hook performs `bucketStore.ensureLoaded()`.
+- Touched: `Footer.vue`, `Header.vue`. Requires webui rebuild + server repackage (PyInstaller dist rebuild first).
+
+
+### 2026-08-24 watcher rollout hardening (self-elevation, supervisor logging, diagnostics)
+
+- `install-server.ps1` and `install-watchers.ps1` now self-elevate instead of failing with "Run this setup as Administrator": `Invoke-SelfElevation` re-launches the script through an encoded command under `-Verb RunAs`, forwards every bound parameter, keeps the elevated window open until Enter, and propagates the elevated exit code.
+- `install-watchers.ps1` gained `-StartupTimeoutSeconds` (default 60) plus `Get-WatcherExePath` / `Get-RunningWatcherProcesses` / `Start-SelectedWatchers`: after registering the supervisor task it waits for the watchers to appear and, for any that the supervisor did not bring up in time, starts them directly in the installing user's session.
+- `supervise-watchers.ps1` now logs to `C:\ProgramData\ActivityWatchFleet\logs\supervisor.log`: it records the identity it runs as, every enumerated session with state/station/user, and why a session was skipped. The native session enumerator no longer drops sessions whose user name cannot be read (a failed `WTSQuerySessionInformation` was previously indistinguishable from "no sessions exist"); that filtering now happens in PowerShell, where it is logged.
+- New `diagnose-watchers.cmd` / `diagnose-watchers.ps1` at the repo root: self-elevating dump of running watcher processes (PID/session/owner/path), both scheduled tasks with last run time and result, the Startup shortcut, install and runtime folders, and log tails. It writes `watcher-diagnostics.txt` next to the script; that report is generated output and is gitignored.
+- New `rebuild-watchers-setup.cmd` at the repo root, mirroring `rebuild-server-setup.cmd`: self-elevates, clears locks/ACLs on the previous exe, and repackages the watcher setup only.
+
+
 ### 2026-08-24 aggregate long-range fleet charts
 
 - The previous quick fix that paused detailed charts for ranges over 7 days has been removed. The user rejected that behavior, correctly: the diagram must still render.
@@ -549,6 +574,44 @@ That roadmap still reflects the intended direction well, but this handoff is the
 - Watcher setup was intentionally not rebuilt; its SHA256 stayed `6AF72FA248FFC68D6530A47A29C0D0FC16496B88D39B1B6A36FD638B052F2AF7`.
 - Root package commit for that installer: `0c657eb Package aggregate fleet chart fix`. Any newer root commit can be treated as documentation-only unless its diff says otherwise.
 - Left uncommitted on this machine: `deploy/windows/watchers/install-watchers.ps1` and `rebuild-watchers-setup.cmd`. They are not part of the rebuilt server installer.
+
+### 2026-08-24 — Zeitachse: audited event editing + manual event creation
+
+- Timeline events are now editable for ADMINS on every watcher row — including sessionstate/audio events, which previously never opened the editor because their click was reserved for the color picker (both work now). Editing stays gated to admins in the UI; the SERVER additionally allows non-admin users to edit events in buckets belonging to their own username (forward-compatible self-service editing — flip the UI gate later in VisTimeline.canEditEvents).
+- Double-click on empty space in a watcher's row creates a manual event there (30 min default at the clicked time), immediately persisted and opened in the EventEditor; data template per bucket type (currentwindow: app/title, afkstatus: status, sessionstate: state, audio: audible).
+- Audit trail (server-stamped in rest.py, so it cannot be forged/lost): every manual create/edit appends {by, at, action} to event.data.$edits; manual creations also get $manual=true. Watcher writes carry no browser session and are untouched. EventEditor hides $-keys from the editable table and shows the history ("Verlauf") instead.
+- Cache coherence: manual create/edit/delete invalidates overlapping cached day summaries (fleet_summary_store.delete_user_summaries_in_range) for the bucket's username — verified day-targeted (only the touched day drops). Heartbeats are unaffected (today's chunk is never persisted).
+- Timeline gets a filter "Bearbeitete / manuelle Events": Alle / Ausblenden / Nur diese.
+- Touched: rest.py (stamping/auth/invalidation on event POST/DELETE), api.py (invalidate_fleet_user_summaries), fleet_summary_store.py, VisTimeline.vue, EventEditor.vue, Timeline.vue, i18n.ts. Requires webui rebuild + server repackage (PyInstaller dist rebuild first).
+
+
+### 2026-08-24 — Zusammenfassung: Tagesvergleich (daily active time vs Redmine bookings)
+
+- New card below the Auswertung table ("Tagesvergleich laden"): for every fleet day in the selected range, per user: Aktive Sitzungszeit vs Redmine gebucht (delta), plus every booking of that day with project label, hours, and the time-entry comment. Empty user-days are skipped; days sort newest first.
+- `redmine.py`: `daily_time_entries()` — row-level read-only SELECT (te.spent_on, project name via join, te.hours, te.comments).
+- `api.py`: `get_fleet_redmine_daily_comparison(start, end, usernames)` — reuses the mapping/matching logic; the active side reads per-day totals from the day-chunk summary cache (get_fleet_user_summary_value per fleet day → warm days are store lookups). Day key = chunk-start local date, so a booking on 2026-08-13 aligns with the fleet day starting 13th 04:00.
+- `rest.py`: POST `/0/fleet/redmine-daily-comparison`. webui: fleet store action (10-min timeout), new card UI in FleetSummary.vue, German i18n strings.
+- Requires webui rebuild + server repackage (PyInstaller dist rebuild first!).
+
+
+### 2026-08-24 — Fleet user summaries now chunked per fleet day (multi-month ranges)
+
+- `GET /0/fleet/users/<u>` and the Zusammenfassung page now split EVERY range at local start_of_day (04:00) boundaries: complete days are served from `user_summary_cache` (totals + apps + devices per day) and persisted after first computation; only missing days and the current, still-running day are computed. A quarter = ~90 SQLite lookups + merge when warm.
+- `fleet.py`: `iter_fleet_day_ranges` (DST-safe wall-clock boundaries via naive `astimezone()`), `calculate_user_summary_day` (totals+apps for one chunk on one shared event cache), `merge_user_summary_chunks` (verified: chunked == whole-range on the real interval logic, incl. boundary-crossing events).
+- `api.py`: `get_fleet_user_summary_value` rewritten around chunks; cached day rows are trusted only if `calculated_at >= range_end` (stale partial-day rows self-heal); the current day is never persisted (Live stays fresh). `_previous_summary_period` now uses wall-clock boundaries so nightly precompute keys match chunk keys. Nightly precompute (unchanged callers) now fills day rows WITH apps, so it warms the App-Zeit table too.
+- "Neu berechnen" (force) recomputes and re-persists every day in the selected range.
+- No webui changes needed. Requires server repackage (PyInstaller dist rebuild!) + reinstall on LS.
+
+
+### 2026-08-24 — Fleet user view: 60s timeout fix (performance + caching)
+
+- Problem: `GET /0/fleet/users/<username>` recomputed everything per request and fetched the same bucket events from SQLite 5-8 times (totals were even computed twice); multi-week ranges exceeded the webui's 60s request timeout.
+- `aw_server/fleet.py`: new request-scoped `FleetEventCache` / `wrap_fleet_event_cache()` memoizes `get_buckets()`/`get_events()` within one request; entry points (`summarize_user`, `calculate_user_summary_totals`, `report_time_by_app`, `summarize_user_activity`, `summarize_device`, `summarize_device_metrics`) wrap themselves. `summarize_user` accepts `precomputed_summary` (skips duplicate totals pass); new `build_user_detail_from_summary()` serves a fully cached range with zero event scans.
+- `aw_server/fleet_summary_store.py`: `user_summary_cache` gains `apps_json` + `available_devices_json` (auto-migrated via ALTER TABLE; COALESCE on conflict so totals-only precompute never wipes cached apps).
+- `aw_server/api.py`: `get_fleet_user()` shares one event cache across summary+detail, serves fully cached ranges instantly, and persists apps/devices after fresh computes; `recalculate_fleet_user_summary()` now forces a FULL recompute (totals + apps) so the "Neu berechnen" button refreshes the cache coherently.
+- webui: per-request 10-min timeouts for `loadUser`, `recalculateUserSummary`, and the activity-summary call (global 60s default untouched).
+- Result: first load of a new range is several times faster; revisiting a range is near-instant; "Neu berechnen" is the explicit cache-bust. Requires webui rebuild + server repackage.
+
 
 ### 2026-08-24 fleet loading feedback and server installer refresh
 
