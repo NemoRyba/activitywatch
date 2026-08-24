@@ -19,6 +19,11 @@ From the repo root after the PyInstaller component builds, including
 To rebuild only one setup and leave the other output untouched, pass
 `-Target Server` or `-Target Watchers`.
 
+For a full server-only rebuild from current sources, double-click
+`rebuild-server-setup.cmd` in the repo root. It rebuilds the web UI,
+copies it into the server static assets, rebuilds the PyInstaller server
+payload, then packages only the server setup exe.
+
 The setup files are written to `dist\deployment`.
 
 Current validated output names:
@@ -26,16 +31,16 @@ Current validated output names:
 - `dist\deployment\ActivityWatch-Fleet-Server-Setup.exe`
 - `dist\deployment\ActivityWatch-Fleet-Watchers-Setup.exe`
 
-Latest validated build, local time 2026-08-24 18:13:
+Latest validated build, local time 2026-08-24 18:34:
 
 - Server setup SHA256:
-  `E15E28E752804D759AEC56681A3622FC64A36E61364CE9A8A0B96362E9DF9608`
+  `FE6329D321702AE9E4A8E17071A97595725D470069F245141484FA5418A12A7E`
 - Watchers setup SHA256:
   `6AF72FA248FFC68D6530A47A29C0D0FC16496B88D39B1B6A36FD638B052F2AF7`
 - Server payload version check:
   `v0.13.2.dev+e5983e5`
 - Root package commit:
-  `0c657eb Package aggregate fleet chart fix`
+  `da4de59 Package fleet summary selection installer`
 - Included UI state: fleet user next/previous day shortcuts, visible loading state on single-user range apply/refresh, activity-summary bucket progress with elapsed time, cancel and restart controls for raw loads, long single-user ranges over 7 days rendering timeline/category diagrams from server-side aggregate data instead of raw window-event dumps, sequential/chunked raw watcher bucket loading for detailed shorter ranges, raw active session total with optional after-AFK total above the bar chart, ignored-category filter for excluding selected category paths and children from activity summaries/charts, click-to-categorize Uncategorized app rows in the category tree, always-visible compact total labels above each bar-chart bar plus full `Bar total` values in hover/click details, chart-coherent active-session tooltip values, pinned scrollable draggable/resizable bar-chart details window on chart/time-axis click, 3-second hover delay for transient chart tooltips, server-backed remembered Fleet user filter state per logged-in web user, max active-session AFK display/default for the short-AFK threshold, optional threshold for treating short AFK periods as active/non-AFK in summaries and watcher timelines, AFK data gaps counted as active only when clamped to overlapping session-watcher active intervals, timeline edit dialogs that preserve scroll position, packaged web UI logo assets, optional CPU/RAM system-load waves in device/user timeline views, LDAP admin settings, Redmine read-only settings plus fleet summary Redmine comparison, and range selection for fleet summary pre-calculation. Fleet live summaries hide stale non-terminal sessions and only show AFK/window details from fresh watcher updates. The server installer uses a smoother data-location prompt with default keep-current-data behavior, a 30-second auto-continue timeout, and batched process stops to avoid one prompt per PID. The server payload includes the Redmine MySQL reader and bundled `PyMySQL` dependency. The watcher setup was not rebuilt for this server-only update.
 - The short-AFK threshold groups consecutive `afk -> afk -> ... -> not-afk` rows into one AFK period before deciding whether the period is short enough to ignore.
 - The fleet user filter includes an opt-in `Count AFK watcher gaps as active only inside active sessions` checkbox for counting active-session gaps with no AFK watcher coverage as non-AFK/active.
