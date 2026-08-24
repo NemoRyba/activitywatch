@@ -1,16 +1,29 @@
 # ActivityWatch Fork Handoff
 
-Date: 2026-07-22
-Repo: `E:\projects\activitywatch`
+Date: 2026-08-24
+Repo: `C:\projecte_visual_code\activitywatch`
 
-## 0. Latest Status - 2026-07-22
+## 0. Latest Status - 2026-08-24
 
-The current priority has shifted from exploration to first LAN deployment.
+The current priority is finishing the LAN fleet deployment and iterating on the server-side fleet/admin UI.
 
 Validated outputs:
 
 - `dist\deployment\ActivityWatch-Fleet-Server-Setup.exe`
 - `dist\deployment\ActivityWatch-Fleet-Watchers-Setup.exe`
+
+Latest validated setup hashes:
+
+- Server setup SHA256:
+  `43B6C7B16582286BEE7C414DBC17ACD168EFDEAF828E95A02E1056533FDF0E22`
+- Watchers setup SHA256:
+  `6AF72FA248FFC68D6530A47A29C0D0FC16496B88D39B1B6A36FD638B052F2AF7`
+
+Latest pushed commits on `central-fork`:
+
+- root `activitywatch`: `c8287ba Rebuild fleet server installer`
+- nested `aw-server`: `fca9ab5 Update web UI loading feedback`
+- nested `aw-server/aw-webui`: `9ddd072 Improve fleet user loading feedback`
 
 The watcher setup is preconfigured for:
 
@@ -35,9 +48,10 @@ Validation done on this working machine:
 - web UI build succeeded with `npm run build`
 - built web UI assets were copied into `aw-server\aw_server\static`
 - PyInstaller builds exist for server, AFK watcher, window watcher, session watcher, audio watcher, and CPU/RAM system watcher
-- packaged `aw-server.exe --version` returns `v0.13.2`
+- packaged `aw-server.exe --version` returns `v0.13.2.dev+e5983e5`
 - packaged server starts on a test port and returns `/api/0/info`
-- deployment setup builder completed successfully for server and watchers
+- deployment setup builder completed successfully for the server setup after the latest web UI change
+- watcher setup was not rebuilt for the latest server-only UI update
 - non-admin smoke install into temp folders passed for both payloads
 
 Important deployment caveats:
@@ -46,9 +60,14 @@ Important deployment caveats:
 - this build machine was not verified to own `192.168.0.144`; the packages are prepared for the intended server machine with that address
 - run setup files as Administrator on target machines
 - after changing web UI code later, rebuild `aw-server\aw-webui`, copy assets into `aw-server\aw_server\static`, then rebuild/server-package again
+- on this Windows build machine, PyInstaller may try to resolve a locked roaming profile path under `\\dc\profiles$`; set build-local `USERPROFILE`, `HOME`, `APPDATA`, `LOCALAPPDATA`, `TEMP`, `TMP`, `PYTHONNOUSERSITE=1`, and `PYINSTALLER_CONFIG_DIR` before running PyInstaller if that happens
 
 Latest fleet UI fixes:
 
+- fleet single-user range apply/refresh now shows a spinner and elapsed seconds while the user detail request is running
+- fleet single-user activity summary now shows a lightweight loading panel with elapsed time, loaded bucket count, current bucket name, progress bar, cancel button, and restart button
+- fleet single-user activity summary now loads matching watcher buckets sequentially instead of firing all long-range bucket event requests in parallel; this avoids the page appearing frozen for long ranges such as `mstep` from `2026-08-01` to `2026-08-24`
+- canceling the fleet single-user activity summary calls the ActivityWatch web client's `abort()` hook so in-flight API calls are aborted and the request controller is reset
 - same-day range selection no longer leaves the fleet user summary permanently loading
 - chart x-axis hover no longer triggers repeated redraw loops
 - AFK hatch overlay is shown only when the AFK checkbox is enabled
@@ -515,6 +534,37 @@ That roadmap still reflects the intended direction well, but this handoff is the
 
 ## 10. Latest Local Work Notes
 
+### 2026-08-24 fleet loading feedback and server installer refresh
+
+- Fleet single-user view (`aw-server/aw-webui/src/views/fleet/FleetUser.vue`) now shows loading state on header refresh and `Zeitraum anwenden`, including elapsed seconds and an abort button while the user detail request is in flight.
+- Fleet single-user activity summary (`aw-server/aw-webui/src/views/fleet/FleetActivitySummary.vue`) now replaces the bare `Lädt...` text with a lightweight loading panel showing elapsed time, bucket progress, current bucket, progress bar, `Abbrechen`, and restart/refresh.
+- Long-range summary loading now fetches candidate watcher buckets sequentially with progress instead of using one large `Promise.all`; this was done because ranges like `mstep` `2026-08-01` to `2026-08-24` could look stuck/unresponsive while raw events were loading.
+- Cancel/restart uses the existing ActivityWatch web client `getClient().abort()` method. Cancelled requests are treated as expected cancellation, not as generic load failures.
+- German i18n labels were added in `aw-server/aw-webui/src/i18n.ts` for the new loading/cancel/progress text.
+- Verified `aw-server/aw-webui` with `npm run build`. The build completed successfully; warnings were the existing asset-size/browserslist/dependency warnings and a PowerShell profile access warning from npm.
+- Rebuilt the web UI, copied `aw-server/aw-webui/dist/*` into `aw-server/aw_server/static`, rebuilt the PyInstaller server payload, and rebuilt only `dist/deployment/ActivityWatch-Fleet-Server-Setup.exe`.
+- Packaged server payload check: `aw-server/dist/aw-server/aw-server.exe --version` returned `v0.13.2.dev+e5983e5`.
+- Latest server setup SHA256: `43B6C7B16582286BEE7C414DBC17ACD168EFDEAF828E95A02E1056533FDF0E22`.
+- Watcher setup was intentionally not rebuilt; its SHA256 stayed `6AF72FA248FFC68D6530A47A29C0D0FC16496B88D39B1B6A36FD638B052F2AF7`.
+- PyInstaller on this machine may fail with access denied resolving `C:\Users\mstep` or `\\dc\profiles$\mstep`. The successful run used local build env overrides:
+
+```powershell
+$repo = (Resolve-Path '..').Path
+$buildHome = Join-Path $repo '.build-home'
+New-Item -ItemType Directory -Force -Path $buildHome,(Join-Path $buildHome 'AppData\Roaming'),(Join-Path $buildHome 'AppData\Local'),(Join-Path $buildHome 'Temp'),(Join-Path $buildHome 'PyInstaller') | Out-Null
+$env:USERPROFILE=$buildHome
+$env:HOME=$buildHome
+$env:APPDATA=Join-Path $buildHome 'AppData\Roaming'
+$env:LOCALAPPDATA=Join-Path $buildHome 'AppData\Local'
+$env:TEMP=Join-Path $buildHome 'Temp'
+$env:TMP=$env:TEMP
+$env:PYTHONNOUSERSITE='1'
+$env:PYINSTALLER_CONFIG_DIR=Join-Path $buildHome 'PyInstaller'
+& ..\.venv-build\Scripts\python.exe -m PyInstaller aw-server.spec --clean --noconfirm
+```
+
+- After that run, remove generated local-only folders `.build-home` and `aw-server/activitywatch` if they appear. They are build/runtime scratch data and should not be committed.
+
 ### 2026-07-23 timeline audio/session readability
 
 - Fleet user daily watcher timeline now labels audio watcher bars by audio state, same idea as session bars. Expected audio states include `active`, `silent`, `no_device`, and `error`.
@@ -556,6 +606,6 @@ That roadmap still reflects the intended direction well, but this handoff is the
   - `test_fleet_user_summary_merges_overlapping_state_events`
   - `test_fleet_user_summary_unions_active_sessions_across_devices`
 - Fresh Windows setup EXEs were rebuilt after copying the web build into `aw-server/aw_server/static` and rebuilding `aw-server/dist/aw-server`.
-- Latest setup hashes:
+- Historical setup hashes from that refresh, superseded by the 2026-08-24 status at the top of this file:
   - Server: `EA01182622F7335DD2E1AF41B1462DEBA9C100B8B515E9C95AA92813CBF1D86E`
   - Watchers: `784E854FCDA42BBB617938371E3C63208F4460757A8BB5041B8AA4DB51C218C6`
