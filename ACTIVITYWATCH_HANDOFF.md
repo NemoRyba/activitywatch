@@ -587,13 +587,14 @@ $env:PYINSTALLER_CONFIG_DIR=Join-Path $buildHome 'PyInstaller'
 ### 2026-08-24 fleet summary selection and server setup helper
 
 - Fleet summary user selection was fixed in `aw-server/aw-webui`: loading a filtered summary no longer replaces the global fleet-user picker list, changing the range/users clears displayed results, and Redmine comparison data only appears after the explicit Redmine load button.
+- Follow-up hardening: `FleetSummary.vue` now keeps a local `allUserOptions` pool loaded from `/fleet/users` and only merges users into it. Summary responses can no longer shrink the visible checkbox list, even if a store action mutates `fleetStore.users`.
 - Added root double-click helper `rebuild-server-setup.cmd`, backed by `deploy/windows/rebuild-server-setup.ps1`.
 - The helper performs the full server-only packaging path: rebuild web UI, copy `aw-server/aw-webui/dist/*` into `aw-server/aw_server/static`, rebuild `aw-server/dist/aw-server` with PyInstaller, then run `deploy/windows/build-setup.ps1 -Target Server`.
 - The helper sets a local PyInstaller home to avoid profile permission errors and passes a process-local Git `safe.directory` setting so `vue.config.js` can read the web UI commit hash under Codex/sandbox ownership.
-- Rebuilt and verified `dist/deployment/ActivityWatch-Fleet-Server-Setup.exe`. Server setup SHA256: `FE6329D321702AE9E4A8E17071A97595725D470069F245141484FA5418A12A7E`.
+- Rebuilt and verified `dist/deployment/ActivityWatch-Fleet-Server-Setup.exe`. Server setup SHA256: `3B60E081A16A660CFB1831FF0A0C79C0485D6E8172BE6B9DE8CE2F5428FBC914`.
 - Server payload check: `aw-server/dist/aw-server/aw-server.exe --version` returned `v0.13.2.dev+e5983e5`.
 - Watcher setup was intentionally not rebuilt for this server-only refresh.
-- Root package commit: `da4de59 Package fleet summary selection installer`.
+- Root package commit: `0dc2ffe Package complete fleet summary picker fix`.
 
 ### 2026-07-23 timeline audio/session readability
 
