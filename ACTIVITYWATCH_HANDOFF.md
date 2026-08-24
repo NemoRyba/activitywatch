@@ -15,17 +15,17 @@ Validated outputs:
 Latest validated setup hashes:
 
 - Server setup SHA256:
-  `5999E4ABFB64A75166FA1CDD2FA6C7CB714702726C1C9EE450EFF0CAF252A328`
+  `E15E28E752804D759AEC56681A3622FC64A36E61364CE9A8A0B96362E9DF9608`
 - Watchers setup SHA256:
   `6AF72FA248FFC68D6530A47A29C0D0FC16496B88D39B1B6A36FD638B052F2AF7`
 
 Latest code/package commit pointers on `central-fork`:
 
-- root `activitywatch` package commit: `a46d415 Package long-range fleet loading fix`
-- nested `aw-server`: `7bb8216 Update web UI long-range fleet loading`
-- nested `aw-server/aw-webui`: `37d321c Defer heavy fleet user chart loading`
+- root `activitywatch` package commit: `0c657eb Package aggregate fleet chart fix`
+- nested `aw-server`: `3a4762b Add aggregate fleet activity endpoint`
+- nested `aw-server/aw-webui`: `e183471 Render aggregate fleet charts for long ranges`
 
-This handoff may have a newer root docs-only commit after `a46d415`; the setup hash above is the reliable identity for the packaged server installer.
+This handoff may have a newer root docs-only commit after `0c657eb`; the setup hash above is the reliable identity for the packaged server installer.
 
 The watcher setup is preconfigured for:
 
@@ -70,7 +70,7 @@ Latest fleet UI fixes:
 - fleet single-user activity summary now shows a lightweight loading panel with elapsed time, loaded bucket count, current bucket name, progress bar, cancel button, and restart button
 - fleet single-user activity summary now loads matching watcher buckets sequentially instead of firing all long-range bucket event requests in parallel; this avoids the page appearing frozen for long ranges such as `mstep` from `2026-08-01` to `2026-08-24`
 - canceling the fleet single-user activity summary calls the ActivityWatch web client's `abort()` hook so in-flight API calls are aborted and the request controller is reset
-- after production testing showed the 24-day `mstep` range still took about 2 minutes and hover/click froze the browser after load, ranges over 7 days now pause detailed raw-event charts entirely and show the backend session totals plus the App Time table as a responsive report view
+- after production testing showed the 24-day `mstep` range still took about 2 minutes and hover/click froze the browser after load, ranges over 7 days now render the same timeline/category diagram panels from server-side aggregate data via `/api/0/fleet/users/<username>/activity-summary` instead of sending raw window-event dumps to the browser
 - same-day range selection no longer leaves the fleet user summary permanently loading
 - chart x-axis hover no longer triggers repeated redraw loops
 - AFK hatch overlay is shown only when the AFK checkbox is enabled
@@ -537,21 +537,34 @@ That roadmap still reflects the intended direction well, but this handoff is the
 
 ## 10. Latest Local Work Notes
 
+### 2026-08-24 aggregate long-range fleet charts
+
+- The previous quick fix that paused detailed charts for ranges over 7 days has been removed. The user rejected that behavior, correctly: the diagram must still render.
+- New backend endpoint: `GET /api/0/fleet/users/<username>/activity-summary`. It returns compact, chart-ready aggregate events plus per-bin active-session totals for the selected user/range/devices.
+- Long single-user ranges now use server-side aggregate rows in `FleetActivitySummary.vue` instead of loading raw `currentwindow`/AFK/session buckets into the browser. Shorter ranges still use the raw watcher path so the detailed watcher timeline remains available.
+- The aggregate response is intentionally event-shaped, so the existing frontend category rules, ignored-category filter, timeline barchart, category tree, top apps/titles/categories, and sunburst panels still render through the existing UI path.
+- Aggregate payload size is capped adaptively per bin. Larger ranges keep fewer app/title/device rows per bin and roll the small tail into `Other`, so hover/click detail windows stay responsive.
+- Verified: backend `py_compile`, fake-data smoke test of `summarize_user_activity`, `npm run build` in `aw-server\aw-webui`, PyInstaller server payload rebuild, server payload version check `v0.13.2.dev+e5983e5`, and rebuilt `dist\deployment\ActivityWatch-Fleet-Server-Setup.exe`.
+- Latest server setup SHA256: `E15E28E752804D759AEC56681A3622FC64A36E61364CE9A8A0B96362E9DF9608`.
+- Watcher setup was intentionally not rebuilt; its SHA256 stayed `6AF72FA248FFC68D6530A47A29C0D0FC16496B88D39B1B6A36FD638B052F2AF7`.
+- Root package commit for that installer: `0c657eb Package aggregate fleet chart fix`. Any newer root commit can be treated as documentation-only unless its diff says otherwise.
+- Left uncommitted on this machine: `deploy/windows/watchers/install-watchers.ps1` and `rebuild-watchers-setup.cmd`. They are not part of the rebuilt server installer.
+
 ### 2026-08-24 fleet loading feedback and server installer refresh
 
 - Fleet single-user view (`aw-server/aw-webui/src/views/fleet/FleetUser.vue`) now shows loading state on header refresh and `Zeitraum anwenden`, including elapsed seconds and an abort button while the user detail request is in flight.
 - Fleet single-user activity summary (`aw-server/aw-webui/src/views/fleet/FleetActivitySummary.vue`) now replaces the bare `Lädt...` text with a lightweight loading panel showing elapsed time, bucket progress, current bucket, progress bar, `Abbrechen`, and restart/refresh.
 - Long-range summary loading now fetches candidate watcher buckets sequentially with progress instead of using one large `Promise.all`; this was done because ranges like `mstep` `2026-08-01` to `2026-08-24` could look stuck/unresponsive while raw events were loading.
-- Follow-up after testing: the same 24-day range still loaded only after about 2 minutes, and hover/click interactions then froze the browser because the chart/category detail code had a huge raw window-event set. Ranges over 7 days now skip raw-event chart loading and show a compact report view instead. The backend totals and App Time table still load through `/api/0/fleet/users/<username>`.
-- Interactive timeline/category charts are intentionally reserved for ranges of 7 days or less. If a future agent wants multi-week charts, build a server-side aggregated endpoint rather than sending raw window events to the browser.
+- Follow-up after testing: the same 24-day range still loaded only after about 2 minutes, and hover/click interactions then froze the browser because the chart/category detail code had a huge raw window-event set. This was superseded the same day by the server-side aggregate endpoint described above.
+- Interactive raw-event timeline/category charts are intentionally reserved for ranges of 7 days or less. Multi-week charts should use the server-side aggregate endpoint rather than sending raw window events to the browser.
 - Cancel/restart uses the existing ActivityWatch web client `getClient().abort()` method. Cancelled requests are treated as expected cancellation, not as generic load failures.
 - German i18n labels were added in `aw-server/aw-webui/src/i18n.ts` for the new loading/cancel/progress text.
 - Verified `aw-server/aw-webui` with `npm run build`. The build completed successfully; warnings were the existing asset-size/browserslist/dependency warnings and a PowerShell profile access warning from npm.
 - Rebuilt the web UI, copied `aw-server/aw-webui/dist/*` into `aw-server/aw_server/static`, rebuilt the PyInstaller server payload, and rebuilt only `dist/deployment/ActivityWatch-Fleet-Server-Setup.exe`.
 - Packaged server payload check: `aw-server/dist/aw-server/aw-server.exe --version` returned `v0.13.2.dev+e5983e5`.
-- Latest server setup SHA256: `5999E4ABFB64A75166FA1CDD2FA6C7CB714702726C1C9EE450EFF0CAF252A328`.
+- Latest server setup SHA256 before the aggregate endpoint replacement: `5999E4ABFB64A75166FA1CDD2FA6C7CB714702726C1C9EE450EFF0CAF252A328`.
 - Watcher setup was intentionally not rebuilt; its SHA256 stayed `6AF72FA248FFC68D6530A47A29C0D0FC16496B88D39B1B6A36FD638B052F2AF7`.
-- Root package commit for that installer: `a46d415 Package long-range fleet loading fix`. Any newer root commit can be treated as documentation-only unless its diff says otherwise.
+- Root package commit for that superseded installer: `a46d415 Package long-range fleet loading fix`.
 - PyInstaller on this machine may fail with access denied resolving `C:\Users\mstep` or `\\dc\profiles$\mstep`. The successful run used local build env overrides:
 
 ```powershell
