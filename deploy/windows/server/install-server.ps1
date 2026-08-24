@@ -13,6 +13,43 @@ $ErrorActionPreference = "Stop"
 $registryPath = "HKLM:\Software\ActivityWatchFleet"
 $dataRootFileName = "data-root.txt"
 
+function Invoke-SelfElevation {
+    # Relaunch this script elevated (UAC prompt), forwarding all bound parameters,
+    # then exit the non-elevated process with the elevated run's exit code.
+    param([hashtable]$BoundParameters)
+
+    $argList = @()
+    foreach ($entry in $BoundParameters.GetEnumerator()) {
+        if ($entry.Value -is [switch] -or $entry.Value -is [bool]) {
+            if ($entry.Value) { $argList += "-$($entry.Key)" }
+        } elseif ($entry.Value -is [array]) {
+            $joined = ($entry.Value | ForEach-Object { "'$_'" }) -join ","
+            $argList += "-$($entry.Key)"; $argList += $joined
+        } else {
+            $argList += "-$($entry.Key)"; $argList += "'$($entry.Value)'"
+        }
+    }
+
+    $scriptPath = $PSCommandPath
+
+    $inner = "& '$scriptPath' $($argList -join ' '); `$code = `$LASTEXITCODE; if (`$null -eq `$code) { `$code = 0 }; Write-Host ''; Read-Host 'Finished. Press Enter to close this window' | Out-Null; exit `$code"
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($inner))
+
+    Write-Host "Administrator rights are required. Requesting elevation..."
+    try {
+        $process = Start-Process `
+            -FilePath (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe") `
+            -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", $encoded) `
+            -Verb RunAs `
+            -PassThru `
+            -Wait
+        exit $process.ExitCode
+    } catch {
+        Write-Error "Elevation was declined or failed: $($_.Exception.Message)"
+        exit 1
+    }
+}
+
 function Test-IsAdmin {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
@@ -423,8 +460,7 @@ function Stop-ExistingServer {
 }
 
 if (-not $AllowNonAdmin -and -not (Test-IsAdmin)) {
-    Write-Error "Run this setup as Administrator. It installs to Program Files, creates a startup task, and opens firewall port 5600."
-    exit 1
+    Invoke-SelfElevation -BoundParameters $PSBoundParameters
 }
 
 $payload = Join-Path $PSScriptRoot "payload.zip"

@@ -168,11 +168,10 @@ public static class AwFleetSessionLauncher
                 );
                 current += dataSize;
 
+                // Do not drop sessions with an unreadable user name here: a failed
+                // WTSQuerySessionInformation would otherwise be indistinguishable from
+                // "no sessions exist". Filtering happens in PowerShell, where it is logged.
                 string userName = QuerySessionString(nativeSession.SessionID, WTS_INFO_CLASS.WTSUserName);
-                if (String.IsNullOrWhiteSpace(userName))
-                {
-                    continue;
-                }
 
                 sessions.Add(new SessionInfo
                 {
@@ -316,8 +315,45 @@ $stateNames = @{
 
 $launchableStates = @(0, 1)
 $arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}"' -f $startScript
-$sessions = [AwFleetSessionLauncher]::GetSessions() | Where-Object {
-    $launchableStates -contains [int]$_.State
+
+$logDir = Join-Path $env:ProgramData "ActivityWatchFleet\logs"
+$logFile = Join-Path $logDir "supervisor.log"
+try {
+    New-Item -ItemType Directory -Force -Path $logDir -ErrorAction SilentlyContinue | Out-Null
+} catch { }
+
+function Write-SupervisorLog {
+    param([string]$Message, [switch]$IsWarning)
+
+    $stamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    $line = "$stamp  $Message"
+
+    if ($IsWarning) { Write-Warning $Message } else { Write-Host $Message }
+    try { Add-Content -Path $logFile -Value $line -ErrorAction SilentlyContinue } catch { }
+}
+
+$allSessions = @([AwFleetSessionLauncher]::GetSessions())
+Write-SupervisorLog ("Enumerated {0} session(s); running as {1}" -f $allSessions.Count, [Security.Principal.WindowsIdentity]::GetCurrent().Name)
+
+foreach ($candidate in $allSessions) {
+    $candidateState = $stateNames[[int]$candidate.State]
+    if (-not $candidateState) { $candidateState = "Unknown($([int]$candidate.State))" }
+    $candidateUser = if ($candidate.UserName) {
+        if ($candidate.DomainName) { "$($candidate.DomainName)\$($candidate.UserName)" } else { $candidate.UserName }
+    } else {
+        "<no user name>"
+    }
+    Write-SupervisorLog ("  session {0} state={1} station='{2}' user={3}" -f $candidate.SessionId, $candidateState, $candidate.StationName, $candidateUser)
+}
+
+$sessions = @(
+    $allSessions | Where-Object {
+        ($launchableStates -contains [int]$_.State) -and -not [string]::IsNullOrWhiteSpace($_.UserName)
+    }
+)
+
+if ($sessions.Count -eq 0) {
+    Write-SupervisorLog "No launchable interactive session found; no watchers were started." -IsWarning
 }
 
 foreach ($session in $sessions) {
@@ -329,7 +365,7 @@ foreach ($session in $sessions) {
     }
 
     if ($DryRun) {
-        Write-Host "Would start watchers for session $($session.SessionId) ($stateName) user $userLabel"
+        Write-SupervisorLog "Would start watchers for session $($session.SessionId) ($stateName) user $userLabel"
         continue
     }
 
@@ -345,8 +381,8 @@ foreach ($session in $sessions) {
     )
 
     if ($started) {
-        Write-Host "Started watcher launcher PID $processId for session $($session.SessionId) ($stateName) user $userLabel"
+        Write-SupervisorLog "Started watcher launcher PID $processId for session $($session.SessionId) ($stateName) user $userLabel"
     } else {
-        Write-Warning "Could not start watchers for session $($session.SessionId) ($stateName) user $userLabel`: $errorMessage"
+        Write-SupervisorLog -IsWarning "Could not start watchers for session $($session.SessionId) ($stateName) user $userLabel`: $errorMessage"
     }
 }

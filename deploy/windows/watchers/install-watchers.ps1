@@ -5,6 +5,7 @@ param(
     [switch]$SkipStartup,
     [switch]$SkipSystemTask,
     [switch]$NoStart,
+    [int]$StartupTimeoutSeconds = 60,
     [switch]$AllowNonAdmin
 )
 
@@ -57,6 +58,43 @@ $WatcherAliases = @{
     "cpu" = "system"
     "ram" = "system"
     "metrics" = "system"
+}
+
+function Invoke-SelfElevation {
+    # Relaunch this script elevated (UAC prompt), forwarding all bound parameters,
+    # then exit the non-elevated process with the elevated run's exit code.
+    param([hashtable]$BoundParameters)
+
+    $argList = @()
+    foreach ($entry in $BoundParameters.GetEnumerator()) {
+        if ($entry.Value -is [switch] -or $entry.Value -is [bool]) {
+            if ($entry.Value) { $argList += "-$($entry.Key)" }
+        } elseif ($entry.Value -is [array]) {
+            $joined = ($entry.Value | ForEach-Object { "'$_'" }) -join ","
+            $argList += "-$($entry.Key)"; $argList += $joined
+        } else {
+            $argList += "-$($entry.Key)"; $argList += "'$($entry.Value)'"
+        }
+    }
+
+    $scriptPath = $PSCommandPath
+
+    $inner = "& '$scriptPath' $($argList -join ' '); `$code = `$LASTEXITCODE; if (`$null -eq `$code) { `$code = 0 }; Write-Host ''; Read-Host 'Finished. Press Enter to close this window' | Out-Null; exit `$code"
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($inner))
+
+    Write-Host "Administrator rights are required. Requesting elevation..."
+    try {
+        $process = Start-Process `
+            -FilePath (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe") `
+            -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", $encoded) `
+            -Verb RunAs `
+            -PassThru `
+            -Wait
+        exit $process.ExitCode
+    } catch {
+        Write-Error "Elevation was declined or failed: $($_.Exception.Message)"
+        exit 1
+    }
 }
 
 function Test-IsAdmin {
@@ -302,6 +340,145 @@ function Register-WatcherSupervisorTask {
     Write-Host "Registered and started scheduled task '$taskName'."
 }
 
+function Get-WatcherExePath {
+    param([string]$InstallDir, [string]$Key)
+
+    $definition = $WatcherDefinitions | Where-Object { $_.Key -eq $Key } | Select-Object -First 1
+    if (-not $definition) {
+        return $null
+    }
+
+    return Join-Path $InstallDir ("{0}\{0}.exe" -f $definition.Folder)
+}
+
+function Get-RunningWatcherProcesses {
+    param([string[]]$ExePaths)
+
+    if (-not $ExePaths -or $ExePaths.Count -eq 0) {
+        return @()
+    }
+
+    return @(
+        Get-CimInstance Win32_Process | Where-Object {
+            $_.ExecutablePath -and ($ExePaths -contains $_.ExecutablePath)
+        }
+    )
+}
+
+function Start-SelectedWatchers {
+    param(
+        [string]$InstallDir,
+        [string[]]$SelectedWatchers,
+        [bool]$SkipSystem,
+        [int]$TimeoutSeconds = 60
+    )
+
+    $supervisorTask = "ActivityWatch Fleet Watchers Supervisor"
+    $systemTask = "ActivityWatch Fleet System Watcher"
+    $hasUserScope = Test-SelectionHasScope -SelectedWatchers $SelectedWatchers -Scope "User"
+    $hasSystemScope = ($SelectedWatchers -contains "system") -and -not $SkipSystem
+
+    $expected = @()
+    foreach ($key in $SelectedWatchers) {
+        if ($key -eq "system" -and $SkipSystem) {
+            continue
+        }
+
+        $exe = Get-WatcherExePath -InstallDir $InstallDir -Key $key
+        if ($exe -and (Test-Path $exe)) {
+            $expected += [pscustomobject]@{
+                Key = $key
+                Exe = [IO.Path]::GetFullPath($exe)
+            }
+        }
+    }
+
+    if ($expected.Count -eq 0) {
+        Write-Host "No installed watcher executables to start."
+        return
+    }
+
+    Write-Host "Waiting for watchers to start (timeout $TimeoutSeconds s)..."
+
+    $expectedPaths = @($expected | ForEach-Object { $_.Exe })
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $lastKick = Get-Date
+
+    while ($true) {
+        $running = Get-RunningWatcherProcesses -ExePaths $expectedPaths
+        $missing = @(
+            $expected | Where-Object {
+                $exePath = $_.Exe
+                -not ($running | Where-Object { $_.ExecutablePath -eq $exePath })
+            }
+        )
+
+        if ($missing.Count -eq 0) {
+            break
+        }
+
+        if ((Get-Date) -ge $deadline) {
+            break
+        }
+
+        # The supervisor task runs as SYSTEM and launches watchers into every
+        # interactive session. Re-trigger it periodically in case the first start
+        # raced with task registration or a session was not ready yet.
+        if (((Get-Date) - $lastKick).TotalSeconds -ge 15) {
+            if ($hasUserScope) {
+                Start-ScheduledTask -TaskName $supervisorTask -ErrorAction SilentlyContinue
+            }
+            if ($hasSystemScope) {
+                Start-ScheduledTask -TaskName $systemTask -ErrorAction SilentlyContinue
+            }
+            $lastKick = Get-Date
+        }
+
+        Start-Sleep -Seconds 2
+    }
+
+    # Fallback: the SYSTEM supervisor launches watchers into interactive sessions via
+    # WTSQueryUserToken/CreateProcessAsUser, which can silently find no session. If the
+    # installer itself is running in an interactive session, start the user watchers here.
+    $running = Get-RunningWatcherProcesses -ExePaths $expectedPaths
+    $missing = @(
+        $expected | Where-Object {
+            $exePath = $_.Exe
+            ($_.Key -ne "system") -and -not ($running | Where-Object { $_.ExecutablePath -eq $exePath })
+        }
+    )
+
+    $installerSessionId = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").SessionId
+    if ($missing.Count -gt 0 -and $installerSessionId -ne 0) {
+        $startScript = Join-Path $InstallDir "start-watchers.ps1"
+        if (Test-Path $startScript) {
+            Write-Host "Supervisor did not start $($missing.Count) watcher(s); starting them directly in session $installerSessionId..."
+            $powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+            try {
+                & $powershell -NoProfile -ExecutionPolicy Bypass -File $startScript 2>&1 |
+                    ForEach-Object { Write-Host "  $_" }
+            } catch {
+                Write-Warning "Direct watcher start failed: $($_.Exception.Message)"
+            }
+            Start-Sleep -Seconds 3
+        } else {
+            Write-Warning "start-watchers.ps1 not found at $startScript"
+        }
+    }
+
+    $running = Get-RunningWatcherProcesses -ExePaths $expectedPaths
+    foreach ($watcher in $expected) {
+        $exePath = $watcher.Exe
+        $processes = @($running | Where-Object { $_.ExecutablePath -eq $exePath })
+        if ($processes.Count -gt 0) {
+            $pidList = ($processes | ForEach-Object { $_.ProcessId }) -join ", "
+            Write-Host "Watcher '$($watcher.Key)' running (PID $pidList)."
+        } else {
+            Write-Warning "Watcher '$($watcher.Key)' did not start. Check %LOCALAPPDATA%\ActivityWatchFleet\logs\watchers and the '$supervisorTask' task history."
+        }
+    }
+}
+
 function Stop-ExistingWatcherProcesses {
     param([string]$InstallDir)
 
@@ -313,41 +490,60 @@ function Stop-ExistingWatcherProcesses {
         Join-Path $InstallDir "aw-watcher-system\aw-watcher-system.exe"
     )
 
-    foreach ($watcherExe in $watcherExePaths) {
-        if (-not (Test-Path $watcherExe)) {
-            continue
-        }
+    $targetPaths = @(
+        $watcherExePaths |
+            Where-Object { Test-Path $_ } |
+            ForEach-Object { [IO.Path]::GetFullPath($_) }
+    )
 
-        $watcherExePath = [IO.Path]::GetFullPath($watcherExe)
-        $processes = Get-CimInstance Win32_Process | Where-Object {
-            $_.ExecutablePath -and [string]::Equals(
-                $_.ExecutablePath,
-                $watcherExePath,
-                [System.StringComparison]::OrdinalIgnoreCase
-            )
-        }
+    if ($targetPaths.Count -eq 0) {
+        return
+    }
 
-        foreach ($process in $processes) {
-            try {
-                Stop-Process -Id $process.ProcessId -ErrorAction SilentlyContinue
-                Wait-Process -Id $process.ProcessId -Timeout 10 -ErrorAction SilentlyContinue
-            } catch {
-                Write-Warning "Could not gracefully stop ActivityWatch Fleet Watcher PID $($process.ProcessId): $($_.Exception.Message)"
-            }
+    # Collect every running watcher process up front so that the stop below is a
+    # SINGLE Stop-Process invocation. PowerShell scopes "Yes to All" to one cmdlet
+    # invocation, so stopping one process per call would re-prompt for each PID no
+    # matter what the user answered.
+    $processes = @(
+        Get-CimInstance Win32_Process | Where-Object {
+            $_.ExecutablePath -and ($targetPaths -contains $_.ExecutablePath)
+        } | Sort-Object ProcessId -Unique
+    )
 
-            if (Get-Process -Id $process.ProcessId -ErrorAction SilentlyContinue) {
-                Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
-                Wait-Process -Id $process.ProcessId -Timeout 10 -ErrorAction SilentlyContinue
-            }
+    if ($processes.Count -eq 0) {
+        return
+    }
 
-            Write-Host "Stopped existing ActivityWatch Fleet Watcher PID $($process.ProcessId)."
+    $processIds = @($processes | ForEach-Object { [int]$_.ProcessId })
+
+    try {
+        Stop-Process -Id $processIds -ErrorAction SilentlyContinue
+    } catch {
+        Write-Warning "Could not gracefully stop existing ActivityWatch Fleet Watcher processes: $($_.Exception.Message)"
+    }
+
+    Wait-Process -Id $processIds -Timeout 10 -ErrorAction SilentlyContinue
+
+    $survivors = @(
+        $processIds | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue }
+    )
+
+    if ($survivors.Count -gt 0) {
+        Stop-Process -Id $survivors -Force -Confirm:$false -ErrorAction SilentlyContinue
+        Wait-Process -Id $survivors -Timeout 10 -ErrorAction SilentlyContinue
+    }
+
+    foreach ($processId in $processIds) {
+        if (Get-Process -Id $processId -ErrorAction SilentlyContinue) {
+            Write-Warning "ActivityWatch Fleet Watcher PID $processId is still running."
+        } else {
+            Write-Host "Stopped existing ActivityWatch Fleet Watcher PID $processId."
         }
     }
 }
 
 if (-not $AllowNonAdmin -and -not (Test-IsAdmin)) {
-    Write-Error "Run this setup as Administrator. It installs to Program Files and creates a machine-level watcher supervisor scheduled task."
-    exit 1
+    Invoke-SelfElevation -BoundParameters $PSBoundParameters
 }
 
 $selectedWatchers = if ($PSBoundParameters.ContainsKey("Watchers")) {
@@ -427,6 +623,14 @@ if (-not $NoStart) {
     if ($hasSystemWatcher -and -not $SkipSystemTask) {
         Start-ScheduledTask -TaskName "ActivityWatch Fleet System Watcher"
     }
+
+    # Do not just fire the tasks and exit: confirm the watchers are actually
+    # running, re-triggering the supervisor while any are still stopped.
+    Start-SelectedWatchers `
+        -InstallDir $InstallDir `
+        -SelectedWatchers $selectedWatchers `
+        -SkipSystem ([bool]$SkipSystemTask) `
+        -TimeoutSeconds $StartupTimeoutSeconds
 } else {
     Write-Host "Skipping watcher task start because -NoStart was used."
 }

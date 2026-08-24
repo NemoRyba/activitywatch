@@ -24,3 +24,5 @@ __pycache__
 # Local runtime state
 .aw-stack/
 *.log
+.pyinstaller-home/
+watcher-diagnostics.txt
