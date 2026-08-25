@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from ctypes import wintypes
 from typing import Optional
 
+from aw_core.identity import session_type_from_protocol
+
 WTS_CURRENT_SERVER_HANDLE = wintypes.HANDLE(0)
 
 WTS_USER_NAME = 5
@@ -214,11 +216,10 @@ def _query_session_info_ex(session_id: int) -> Optional[SessionInfoEx]:
 
 
 def get_session_type(protocol_type: Optional[int]) -> str:
-    if protocol_type == 2:
-        return "rdp"
-    if protocol_type == 0:
-        return "console"
-    return "interactive"
+    # Shared with every other watcher via aw_core.identity, so one physical
+    # session cannot be labelled two different ways. Protocol 1 (ICA/Citrix)
+    # is "virtual"; an unreadable protocol is "unknown", not a made-up value.
+    return session_type_from_protocol(protocol_type)
 
 
 def session_flags_to_locked(session_flags: Optional[int], *, reverse: bool = False):

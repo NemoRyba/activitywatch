@@ -83,6 +83,35 @@ function Start-Watcher {
     Write-Host "Started $Key PID $($process.Id)"
 }
 
+function Resolve-FleetServer {
+    <#
+      Honour a server move announced through the admin GUI.
+
+      $ServerHost/$ServerPort are baked in at build time, but an admin can move
+      the server to another machine and announce the new address; the
+      supervisor verifies it and stores it here. This file lives outside the
+      install directory, so a watcher update cannot lose it.
+    #>
+    param([string]$FallbackHost, [int]$FallbackPort)
+
+    $endpointFile = Join-Path $env:ProgramData "ActivityWatchFleet\server-endpoint.txt"
+    if (Test-Path $endpointFile) {
+        try {
+            $stored = (Get-Content -Path $endpointFile -Raw).Trim()
+            if ($stored -match '^https?://') {
+                $uri = [uri]$stored
+                $port = if ($uri.IsDefaultPort -and $stored -notmatch ':\d+/?$') { $FallbackPort } else { $uri.Port }
+                return [pscustomobject]@{ Host = $uri.Host; Port = [int]$port }
+            }
+        } catch { }
+    }
+    return [pscustomobject]@{ Host = $FallbackHost; Port = [int]$FallbackPort }
+}
+
+$fleetServer = Resolve-FleetServer -FallbackHost $ServerHost -FallbackPort $ServerPort
+$ServerHost = $fleetServer.Host
+$ServerPort = $fleetServer.Port
+
 $commonArgs = @("--host", $ServerHost, "--port", [string]$ServerPort, "--central-mode")
 $selectedWatchers = Get-SelectedWatcherKeys
 $userWatchers = @(

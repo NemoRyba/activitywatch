@@ -102,11 +102,11 @@ Assert-UnderRepo $serverDir
 Assert-UnderRepo $serverStatic
 Assert-UnderRepo $serverSetup
 
-Invoke-Step "1/5 Clear previous server setup" {
+Invoke-Step "1/6 Clear previous server setup" {
     Clear-SetupOutput -Path $serverSetup
 }
 
-Invoke-Step "2/5 Build web UI" {
+Invoke-Step "2/6 Build web UI" {
     $npm = (Get-Command npm.cmd -ErrorAction SilentlyContinue).Source
     if (-not $npm) {
         $npm = (Get-Command npm -ErrorAction Stop).Source
@@ -131,7 +131,7 @@ Invoke-Step "2/5 Build web UI" {
     }
 }
 
-Invoke-Step "3/5 Copy web UI into server static assets" {
+Invoke-Step "3/6 Copy web UI into server static assets" {
     if (-not (Test-Path -LiteralPath $webuiDist)) {
         throw "Missing web UI build output: $webuiDist"
     }
@@ -145,7 +145,40 @@ Invoke-Step "3/5 Copy web UI into server static assets" {
     Copy-Item -Path (Join-Path $webuiDist "*") -Destination $serverStatic -Recurse -Force
 }
 
-Invoke-Step "4/5 Build PyInstaller server payload" {
+Invoke-Step "4/6 Stage watcher package for auto-update" {
+    # Embed the most recently built watcher setup contents into the server so
+    # admins can roll them out fleet-wide from the web GUI (watcher auto-update).
+    $watchersIexpress = Join-Path $repoRoot "dist\deployment\watchers-iexpress"
+    $packageDir = Join-Path $serverDir "aw_server\watcher_package"
+    Assert-UnderRepo $packageDir
+
+    $sourceFiles = @("payload.zip", "install-watchers.ps1", "manifest.json") |
+        ForEach-Object { Join-Path $watchersIexpress $_ }
+    $missing = @($sourceFiles | Where-Object { -not (Test-Path -LiteralPath $_) })
+
+    if ($missing.Count -eq 0) {
+        if (Test-Path -LiteralPath $packageDir) {
+            Remove-Item -LiteralPath $packageDir -Recurse -Force
+        }
+        New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
+        foreach ($file in $sourceFiles) {
+            Copy-Item -LiteralPath $file -Destination $packageDir -Force
+        }
+        $stagedManifest = Get-Content -LiteralPath (Join-Path $packageDir "manifest.json") -Raw | ConvertFrom-Json
+        Write-Host "Embedded watcher package version: $($stagedManifest.version)"
+    } elseif (Test-Path -LiteralPath (Join-Path $packageDir "manifest.json")) {
+        $stagedManifest = Get-Content -LiteralPath (Join-Path $packageDir "manifest.json") -Raw | ConvertFrom-Json
+        Write-Host "WARNING: dist\deployment\watchers-iexpress is missing or incomplete." -ForegroundColor Yellow
+        Write-Host "         Re-using the previously staged watcher package (version $($stagedManifest.version))." -ForegroundColor Yellow
+        Write-Host "         Run rebuild-watchers-setup.cmd first to embed the latest watcher build." -ForegroundColor Yellow
+    } else {
+        Write-Host "WARNING: no watcher package available (run rebuild-watchers-setup.cmd first)." -ForegroundColor Yellow
+        Write-Host "         The server is built WITHOUT an embedded watcher package;" -ForegroundColor Yellow
+        Write-Host "         the watcher auto-update page will show 'no package'." -ForegroundColor Yellow
+    }
+}
+
+Invoke-Step "5/6 Build PyInstaller server payload" {
     $python = Resolve-PythonExe
     Write-Host "Using Python: $python"
 
@@ -174,7 +207,7 @@ Invoke-Step "4/5 Build PyInstaller server payload" {
     }
 }
 
-Invoke-Step "5/5 Build server setup exe" {
+Invoke-Step "6/6 Build server setup exe" {
     & (Join-Path $PSScriptRoot "build-setup.ps1") `
         -ServerHost $ServerHost `
         -ServerPort $ServerPort `

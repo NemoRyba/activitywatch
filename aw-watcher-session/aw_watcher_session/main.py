@@ -8,6 +8,8 @@ from aw_core.identity import (
     build_bucket_id,
     build_bucket_metadata,
     is_central_mode,
+    normalize_session_state,
+    normalize_session_type,
     resolve_identity,
 )
 from aw_core.log import setup_logging
@@ -66,14 +68,20 @@ def heartbeat_loop(client, bucket_id, poll_time, identity):
             snapshot = get_current_session_snapshot()
             now = datetime.now(timezone.utc)
 
+            # The snapshot is the most specific source, but it reports
+            # "unknown" when the WTS protocol query fails - in that case the
+            # identity value (which ran its own detection) is the better one.
+            snapshot_type = normalize_session_type(snapshot.session_type)
             event_data = {
-                "state": snapshot.state,
+                "state": normalize_session_state(snapshot.state),
                 "reason": snapshot.reason,
                 "username": identity["username"],
                 "device_id": identity["device_id"],
                 "device_name": identity["device_name"],
                 "session_id": identity["session_id"],
-                "session_type": snapshot.session_type or identity["session_type"],
+                "session_type": snapshot_type
+                if snapshot_type != "unknown"
+                else identity["session_type"],
                 "hostname": identity["hostname"],
                 "connect_state": snapshot.connect_state,
                 "connect_state_name": snapshot.connect_state_name,

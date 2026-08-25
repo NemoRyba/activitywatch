@@ -26,3 +26,8 @@ __pycache__
 *.log
 .pyinstaller-home/
 watcher-diagnostics.txt
+diagnostics/
+backups/
+
+# Watcher auto-update package staged into the server build (large binaries)
+aw-server/aw_server/watcher_package/

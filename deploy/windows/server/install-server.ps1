@@ -10,6 +10,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+trap {
+    Write-Host ""
+    Write-Host "INSTALLATION FAILED: $_" -ForegroundColor Red
+    Read-Host "Press Enter to close this window" | Out-Null
+    exit 1
+}
+
 $registryPath = "HKLM:\Software\ActivityWatchFleet"
 $dataRootFileName = "data-root.txt"
 
@@ -32,7 +39,7 @@ function Invoke-SelfElevation {
 
     $scriptPath = $PSCommandPath
 
-    $inner = "& '$scriptPath' $($argList -join ' '); `$code = `$LASTEXITCODE; if (`$null -eq `$code) { `$code = 0 }; Write-Host ''; Read-Host 'Finished. Press Enter to close this window' | Out-Null; exit `$code"
+    $inner = "& '$scriptPath' $($argList -join ' '); `$code = `$LASTEXITCODE; if (`$null -eq `$code) { `$code = 0 }; exit `$code"
     $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($inner))
 
     Write-Host "Administrator rights are required. Requesting elevation..."
@@ -165,6 +172,65 @@ function Test-IsUpdateInstall {
     }
 }
 
+function Read-MoveDecisionWithTimeout {
+    param(
+        [string]$CurrentRuntimeRoot,
+        [int]$TimeoutSeconds = 13
+    )
+
+    # Console question with auto-continue: returns $true only if the user
+    # explicitly answers yes within the timeout. Any problem (no interactive
+    # console, redirected input) means "keep the current data" - the update
+    # must never hang or move data on its own.
+    Write-Host ""
+    Write-Host "Existing server data found at: $CurrentRuntimeRoot" -ForegroundColor Cyan
+    Write-Host "Move the database/runtime data to a different folder?" -ForegroundColor Cyan
+    Write-Host "  [J/Y] yes, choose a new folder    [N/Enter] no    (auto-continue keeps current data)"
+
+    try {
+        # Flush pending keypresses so an earlier Enter cannot answer this question.
+        while ([Console]::KeyAvailable) { [Console]::ReadKey($true) | Out-Null }
+    } catch {
+        Write-Host "No interactive console input available; keeping the current data location."
+        return $false
+    }
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $lastShown = -1
+
+    while ((Get-Date) -lt $deadline) {
+        $remaining = [int][Math]::Ceiling(($deadline - (Get-Date)).TotalSeconds)
+        if ($remaining -ne $lastShown) {
+            Write-Host ("`rContinuing without moving in {0,2} s... " -f $remaining) -NoNewline
+            $lastShown = $remaining
+        }
+
+        try {
+            if ([Console]::KeyAvailable) {
+                $key = [Console]::ReadKey($true)
+                if ($key.Key -eq [ConsoleKey]::J -or $key.Key -eq [ConsoleKey]::Y) {
+                    Write-Host ""
+                    return $true
+                }
+                if ($key.Key -eq [ConsoleKey]::N -or $key.Key -eq [ConsoleKey]::Enter -or $key.Key -eq [ConsoleKey]::Escape) {
+                    Write-Host ""
+                    return $false
+                }
+                # other keys are ignored; countdown keeps running
+            }
+        } catch {
+            Write-Host ""
+            return $false
+        }
+
+        Start-Sleep -Milliseconds 100
+    }
+
+    Write-Host ""
+    Write-Host "No answer within $TimeoutSeconds seconds - keeping the current data location."
+    return $false
+}
+
 function Select-RuntimeRootWithDialog {
     param([string]$CurrentRuntimeRoot)
 
@@ -173,132 +239,70 @@ function Select-RuntimeRootWithDialog {
         return $CurrentRuntimeRoot
     }
 
+    if (-not (Read-MoveDecisionWithTimeout -CurrentRuntimeRoot $CurrentRuntimeRoot -TimeoutSeconds 13)) {
+        Write-Host "Keeping data location: $CurrentRuntimeRoot"
+        return $CurrentRuntimeRoot
+    }
+
     try {
         Add-Type -AssemblyName System.Windows.Forms
         Add-Type -AssemblyName System.Drawing
     } catch {
-        Write-Warning "Could not load Windows Forms for data location prompt; keeping $CurrentRuntimeRoot"
+        Write-Warning "Could not load Windows Forms for the folder dialog; keeping $CurrentRuntimeRoot"
         return $CurrentRuntimeRoot
     }
 
-    $timeoutSeconds = 30
-    $state = @{ Remaining = $timeoutSeconds }
+    # Invisible TopMost owner window: without it, dialogs started from an
+    # elevated installer console regularly open BEHIND the console without
+    # focus - which made the old move dialog look like it did not exist.
+    $owner = New-Object System.Windows.Forms.Form
+    $owner.TopMost = $true
+    $owner.ShowInTaskbar = $false
+    $owner.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+    $owner.StartPosition = "Manual"
+    $owner.Size = New-Object System.Drawing.Size(1, 1)
+    $owner.Location = New-Object System.Drawing.Point(-2000, -2000)
 
-    $form = New-Object System.Windows.Forms.Form
-    $form.Text = "ActivityWatch Fleet Server data location"
-    $form.StartPosition = "CenterScreen"
-    $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
-    $form.MaximizeBox = $false
-    $form.MinimizeBox = $false
-    $form.ClientSize = New-Object System.Drawing.Size(620, 230)
+    try {
+        $owner.Show()
+        $owner.Activate()
 
-    $messageLabel = New-Object System.Windows.Forms.Label
-    $messageLabel.Location = New-Object System.Drawing.Point(16, 16)
-    $messageLabel.Size = New-Object System.Drawing.Size(588, 108)
-    $messageLabel.Text = "ActivityWatch Fleet Server already has an existing data location:`r`n`r`n$CurrentRuntimeRoot`r`n`r`nLeave the box unchecked to keep the current database and continue the update."
-    $form.Controls.Add($messageLabel)
+        while ($true) {
+            $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+            $dialog.Description = "Choose an EMPTY folder for ActivityWatch Fleet Server data. The existing data will be moved there."
+            $dialog.ShowNewFolderButton = $true
+            if (Test-Path $CurrentRuntimeRoot) {
+                $dialog.SelectedPath = $CurrentRuntimeRoot
+            }
 
-    $moveCheckbox = New-Object System.Windows.Forms.CheckBox
-    $moveCheckbox.Location = New-Object System.Drawing.Point(20, 128)
-    $moveCheckbox.Size = New-Object System.Drawing.Size(560, 24)
-    $moveCheckbox.Text = "Move database and runtime data to a different empty folder"
-    $moveCheckbox.Checked = $false
-    $form.Controls.Add($moveCheckbox)
+            $result = $dialog.ShowDialog($owner)
+            if ($result -ne [System.Windows.Forms.DialogResult]::OK) {
+                Write-Host "No new data folder selected; keeping $CurrentRuntimeRoot"
+                return $CurrentRuntimeRoot
+            }
 
-    $countdownLabel = New-Object System.Windows.Forms.Label
-    $countdownLabel.Location = New-Object System.Drawing.Point(20, 160)
-    $countdownLabel.Size = New-Object System.Drawing.Size(360, 22)
-    $countdownLabel.Text = "Continuing without moving data in $timeoutSeconds seconds."
-    $form.Controls.Add($countdownLabel)
+            $selected = Normalize-DataRoot $dialog.SelectedPath
+            if (Test-IsSamePath -Left $CurrentRuntimeRoot -Right $selected) {
+                Write-Host "Selected folder equals the current data location; nothing to move."
+                return $CurrentRuntimeRoot
+            }
 
-    $continueButton = New-Object System.Windows.Forms.Button
-    $continueButton.Location = New-Object System.Drawing.Point(404, 158)
-    $continueButton.Size = New-Object System.Drawing.Size(95, 28)
-    $continueButton.Text = "Continue"
-    $continueButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
-    $form.Controls.Add($continueButton)
+            if (Test-DirectoryHasEntries -Path $selected) {
+                [System.Windows.Forms.MessageBox]::Show(
+                    $owner,
+                    "The selected folder is not empty. Choose an empty folder so setup cannot overwrite unrelated files.",
+                    "ActivityWatch Fleet Server data location",
+                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                    [System.Windows.Forms.MessageBoxIcon]::Warning
+                ) | Out-Null
+                continue
+            }
 
-    $cancelButton = New-Object System.Windows.Forms.Button
-    $cancelButton.Location = New-Object System.Drawing.Point(509, 158)
-    $cancelButton.Size = New-Object System.Drawing.Size(95, 28)
-    $cancelButton.Text = "Cancel"
-    $cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
-    $form.Controls.Add($cancelButton)
-
-    $form.AcceptButton = $continueButton
-    $form.CancelButton = $cancelButton
-
-    $timer = New-Object System.Windows.Forms.Timer
-    $timer.Interval = 1000
-    $timer.Add_Tick({
-        $state.Remaining = [int]$state.Remaining - 1
-        if ($state.Remaining -le 0) {
-            $timer.Stop()
-            $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
-            $form.Close()
-            return
+            Write-Host "New data location selected: $selected"
+            return $selected
         }
-
-        $countdownLabel.Text = "Continuing without moving data in $($state.Remaining) seconds."
-    })
-
-    $moveCheckbox.Add_CheckedChanged({
-        if ($moveCheckbox.Checked) {
-            $timer.Stop()
-            $countdownLabel.Text = "Click Continue to choose an empty folder for the moved data."
-            return
-        }
-
-        $state.Remaining = $timeoutSeconds
-        $countdownLabel.Text = "Continuing without moving data in $timeoutSeconds seconds."
-        $timer.Start()
-    })
-
-    $timer.Start()
-    $choice = $form.ShowDialog()
-    $moveRequested = $moveCheckbox.Checked
-    $timer.Stop()
-    $timer.Dispose()
-    $form.Dispose()
-
-    if ($choice -eq [System.Windows.Forms.DialogResult]::Cancel) {
-        throw "Setup cancelled by user."
-    }
-
-    if (-not $moveRequested) {
-        return $CurrentRuntimeRoot
-    }
-
-    while ($true) {
-        $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-        $dialog.Description = "Choose an empty folder for ActivityWatch Fleet Server data. The existing data will be moved there."
-        $dialog.ShowNewFolderButton = $true
-        if (Test-Path $CurrentRuntimeRoot) {
-            $dialog.SelectedPath = $CurrentRuntimeRoot
-        }
-
-        $result = $dialog.ShowDialog()
-        if ($result -ne [System.Windows.Forms.DialogResult]::OK) {
-            Write-Host "No new data folder selected; keeping $CurrentRuntimeRoot"
-            return $CurrentRuntimeRoot
-        }
-
-        $selected = Normalize-DataRoot $dialog.SelectedPath
-        if (Test-IsSamePath -Left $CurrentRuntimeRoot -Right $selected) {
-            return $CurrentRuntimeRoot
-        }
-
-        if (Test-DirectoryHasEntries -Path $selected) {
-            [System.Windows.Forms.MessageBox]::Show(
-                "The selected folder is not empty. Choose an empty folder so setup cannot overwrite unrelated files.",
-                "ActivityWatch Fleet Server data location",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Warning
-            ) | Out-Null
-            continue
-        }
-
-        return $selected
+    } finally {
+        $owner.Dispose()
     }
 }
 
@@ -535,3 +539,7 @@ if (-not $SkipTask) {
 Write-Host "ActivityWatch Fleet Server installed to $InstallDir"
 Write-Host "Runtime data root: $runtimeRoot"
 Write-Host "Web UI: http://192.168.0.144:5600/"
+
+Write-Host ""
+Write-Host "Installation completed successfully." -ForegroundColor Green
+Read-Host "Press Enter to close this window" | Out-Null

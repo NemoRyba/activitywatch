@@ -1,276 +1,88 @@
-<img title="ActivityWatch" src="https://activitywatch.net/img/banner.png" align="center">
+# ActivityWatch Fleet
 
-<p align="center">
-  <b>Records what you do</b> so that you can <i>know how you've spent your time</i>.
-  <br>
-  All in a secure way where <i>you control the data</i>.
-</p>
+A Windows-focused fork of [ActivityWatch](https://github.com/ActivityWatch/activitywatch) turned into a **centralized multi-user, multi-device work-tracking system** for a small LAN fleet (~20 users / ~20 devices).
 
-<p align="center">
-  <a href="https://twitter.com/ActivityWatchIt">
-    <img title="Twitter follow" src="https://img.shields.io/twitter/follow/ActivityWatchIt.svg?style=social&label=Follow"/>
-  </a>
-  <a href="https://github.com/ActivityWatch/activitywatch">
-    <img title="Star on GitHub" src="https://img.shields.io/github/stars/ActivityWatch/activitywatch.svg?style=social&label=Star">
-  </a>
+One central server collects events from watchers running on every fleet PC. The web UI is organized around **users and sessions**, not hostnames: who worked when, in which programs, active vs. AFK vs. locked vs. disconnected, compared day-by-day against the hours booked in Redmine.
 
-  <br>
-
-  <b>
-    <a href="https://activitywatch.net/">Website</a>
-    — <a href="https://forum.activitywatch.net/">Forum</a>
-    — <a href="https://docs.activitywatch.net">Documentation</a>
-    — <a href="https://github.com/ActivityWatch/activitywatch/releases">Releases</a>
-  </b>
-
-  <br>
-
-  <b>
-    <a href="https://activitywatch.net/contributors/">Contributor stats</a>
-    — <a href="https://activitywatch.net/ci/">CI overview</a>
-  </b>
-</p>
-
-<p align="center">
-  <a href="https://github.com/ActivityWatch/activitywatch/actions?query=branch%3Amaster">
-    <img title="Build Status GitHub" src="https://github.com/ActivityWatch/activitywatch/workflows/Build/badge.svg?branch=master" />
-  </a>
-  <a href="https://ci.appveyor.com/project/ErikBjare/activitywatch">
-    <img title="Build Status Appveyor" src="https://ci.appveyor.com/api/projects/status/vm7g9sdfi2vgix6n?svg=true" />
-  </a>
-  <a href="https://docs.activitywatch.net">
-    <img title="Documentation" src="https://readthedocs.org/projects/activitywatch/badge/?version=latest" />
-  </a>
-
-  <br>
-
-  <a href="https://github.com/ActivityWatch/activitywatch/releases">
-    <img title="Latest release" src="https://img.shields.io/github/release-pre/ActivityWatch/activitywatch.svg">
-  </a>
-  <a href="https://github.com/ActivityWatch/activitywatch/releases">
-    <img title="Total downloads (GitHub Releases)" src="https://img.shields.io/github/downloads/ActivityWatch/activitywatch/total.svg" />
-  </a>
-  <a href="https://discord.gg/vDskV9q">
-    <img title="Discord" src="https://img.shields.io/discord/755040852727955476" />
-  </a>
-
-  <br>
-
-  <a href="https://activitywatch.net/donate/">
-    <img title="Donated" src="https://img.shields.io/badge/budget-%24201%2Fmo%20from%2040%20supporters-orange.svg" />
-  </a>
-  <a href="https://doi.org/10.5281/zenodo.4957165">
-    <img src="https://zenodo.org/badge/DOI/10.5281/zenodo.4957165.svg" />
-  </a>
-</p>
-
-<!--
-# TODO: Best practices badge that we should work towards, see issue #42.
-[![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/873/badge)](https://bestpractices.coreinfrastructure.org/projects/873)
-[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bhttps%3A%2F%2Fgithub.com%2FActivityWatch%2Factivitywatch.svg?type=shield)](https://app.fossa.io/projects/git%2Bhttps%3A%2F%2Fgithub.com%2FActivityWatch%2Factivitywatch?ref=badge_shield)
--->
-
-
-*Do you want to receive email updates on major announcements?*<br>
-***[Signup for the newsletter](http://eepurl.com/cTU6QX)!***
-
-<details>
- <summary>Table of Contents</summary>
-
- * [About](#about)
-    * [Screenshots](#screenshots)
-    * [Is this yet another time tracker?](#is-this-yet-another-time-tracker)
-       * [Feature comparison](#feature-comparison)
-    * [Installation &amp; Usage](#installation--usage)
- * [About this repository](#about-this-repository)
-    * [Server](#server)
-    * [Watchers](#watchers)
-    * [Libraries](#libraries)
- * [Contributing](#contributing)
-</details>
-
-## About
-
-The goal of ActivityWatch is simple: *Enable the collection of as much valuable lifedata as possible without compromising user privacy.*
-
-We've worked towards this goal by creating an application for safe storage of the data on the user's local machine and as well as a set of watchers which record data such as:
-
- - Currently active application and the title of its window
- - Currently active browser tab and its title and URL
- - Keyboard and mouse activity, to detect if you are AFK ("away from keyboard") or not
-
-It is up to you as user to collect as much as you want, or as little as you want (and we hope some of you will help write watchers so we can collect more).
-
-### Screenshots
-
-<span><img src="https://activitywatch.net/img/screenshots/screenshot-v0.9.3-activity.png"   width="45%"></span>
-<span><img src="https://activitywatch.net/img/screenshots/screenshot-v0.8.0b9-timeline.png" width="50%"></span>
-
-You can find more (and newer) screenshots on [the website](https://activitywatch.net/screenshots/).
-
-
-## Installation & Usage
-
-Downloads are available on the [releases page](https://github.com/ActivityWatch/activitywatch/releases).
-
-For instructions on how to get started, please see the [guide in the documentation](https://docs.activitywatch.net/en/latest/getting-started.html).
-
-Interested in building from source? [There's a guide for that too](https://docs.activitywatch.net/en/latest/installing-from-source.html).
-
-## Is this yet another time tracker?
-
-Yes, but we found that most time trackers lack one or more important features.
-
-**Common dealbreakers:**
-
- - Not open source
- - The user does not own the data (common with non-open source options)
- - Lack of synchronization (and when available: it's centralized and the sync server knows everything)
- - Difficult to setup/use (most open source options tend to target programmers)
- - Low data resolution (low level of detail, does not store raw data, long intervals between entries)
- - Hard or impossible to extend (collecting more data is not as simple as it could be)
-
-**To sum it up:**
-
- - Closed source solutions suffer from privacy issues and limited features.
- - Open source solutions aren't developed with end-users in mind and are usually not written to be easily extended (they lack a proper API). They also lack synchronization.
-
-We have a plan to address all of these and we're well on our way. See the table below for our progress.
-
-
-### Feature comparison
-
-##### Basics
-
-|               | User owns data     | GUI                | Sync                       | Open Source        |
-| ------------- |:------------------:|:------------------:|:--------------------------:|:------------------:|
-| ActivityWatch | :white_check_mark: | :white_check_mark: | [WIP][sync], decentralized | :white_check_mark: |
-| [Selfspy]       | :white_check_mark: | :x:                | :x:                        | :white_check_mark: |
-| [ulogme]        | :white_check_mark: | :white_check_mark: | :x:                        | :white_check_mark: |
-| [RescueTime]    | :x:                | :white_check_mark: | Centralized                | :x:                |
-| [WakaTime]      | :x:                | :white_check_mark: | Centralized                | Clients            |
-
-[sync]: https://github.com/ActivityWatch/activitywatch/issues/35
-[Selfspy]: https://github.com/selfspy/selfspy
-[ulogme]: https://github.com/karpathy/ulogme
-[RescueTime]: https://www.rescuetime.com/
-[WakaTime]: https://wakatime.com/
-
-##### Platforms
-<!-- TODO: Replace Platform names with icons  -->
-
-|               | Windows            | macOS              | Linux              | Android            | iOS                 |
-| ------------- |:------------------:|:------------------:|:------------------:|:------------------:|:-------------------:|
-| ActivityWatch | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |:x:                  |
-| Selfspy       | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                |:x:                  |
-| ulogme        | :x:                | :white_check_mark: | :white_check_mark: | :x:                |:x:                  |
-| RescueTime    | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |Limited functionality|
-
-##### Tracking
-
-|               | App & Window Title | AFK                | Browser Extensions | Editor Plugins     | Extensible            |
-| ------------- |:------------------:|:------------------:|:------------------:|:------------------:|:---------------------:|
-| ActivityWatch | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark:    |
-| Selfspy       | :white_check_mark: | :white_check_mark: | :x:                | :x:                | :x:                   |
-| ulogme        | :white_check_mark: | :white_check_mark: | :x:                | :x:                | :x:                   |
-| RescueTime    | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                | :x:                   |
-| WakaTime      | :x:                | :white_check_mark: | :white_check_mark: | :white_check_mark: | Only for text editors |
-
-For a complete list of the things ActivityWatch can track, [see the page on *watchers* in the documentation](https://docs.activitywatch.net/en/latest/watchers.html).
-
+- Central server + web UI: `http://192.168.0.144:5600/` (host `LS`)
+- Development machine / repo: `C:\projecte_visual_code\activitywatch` (branch `central-fork`)
+- Detailed work log and current state: [`ACTIVITYWATCH_HANDOFF.md`](ACTIVITYWATCH_HANDOFF.md)
+- Deployment details: [`deploy/windows/README.md`](deploy/windows/README.md)
 
 ## Architecture
 
-```mermaid
-graph TD;
-  aw-qt[<a href='https://github.com/ActivityWatch/aw-qt'>aw-qt</a>];
-  aw-notify[<a href='https://github.com/ActivityWatch/aw-notify-rs'>aw-notify</a>];
-  aw-server[<a href='https://github.com/ActivityWatch/aw-server'>aw-server</a>];
-  aw-webui[<a href='https://github.com/ActivityWatch/aw-webui'>aw-webui</a>];
-  aw-watcher-window[<a href='https://github.com/ActivityWatch/aw-watcher-window'>aw-watcher-window</a>];
-  aw-watcher-afk[<a href='https://github.com/ActivityWatch/aw-watcher-afk'>aw-watcher-afk</a>];
-  aw-watcher-web[<a href='https://github.com/ActivityWatch/aw-watcher-web'>aw-watcher-web</a>];
-  aw-sync[<a href='https://github.com/ActivityWatch/aw-server-rust/tree/master/aw-sync'>aw-sync</a>];
-
-  aw-qt -- Manages --> aw-server;
-  aw-qt -- Manages --> aw-notify -- Queries --> aw-server;
-  aw-qt -- Manages --> aw-watcher-window -- Watches --> S1[Active window] -- Heartbeats --> aw-server;
-  aw-qt -- Manages --> aw-watcher-afk -- Watches --> S2[AFK status] -- Heartbeats --> aw-server;
-  Browser -- Manages --> aw-watcher-web -- Watches --> S3[Active tab] -- Heartbeats --> aw-server;
-  SF -- Dropbox/Syncthing/etc --> SF;
-  aw-server <-- Push/Pull --> aw-sync <-- Read/Write --> SF[Sync folder];
-  aw-server -- Serves --> aw-webui -- Queries --> aw-server;
-
-  %% User -- Interacts --> aw-webui;
-  %% User -- Observes --> aw-notify;
-  %% User -- Interacts --> aw-qt;
-
-classDef lightMode fill:#FFFFFF, stroke:#333333, color:#333333;
-classDef darkMode fill:#333333, stroke:#FFFFFF, color:#FFFFFF;
-
-classDef lightModeLinks stroke:#333333;
-classDef darkModeLinks stroke:#FFFFFF;
-
-class A,B,C,D,E,G lightMode;
-class A,B,C,D,E,G darkMode;
-
-%% linkStyle 0 stroke:#FF4136, stroke-width:2px;
-%% linkStyle 1 stroke:#1ABC9C, stroke-width:2px;
+```
+Fleet PC (each device)                         Server LS (192.168.0.144)
+┌──────────────────────────────────┐           ┌──────────────────────────────────┐
+│ Scheduled task (SYSTEM):         │           │ aw-server (PyInstaller, task)    │
+│  supervise-watchers.ps1          │  HTTP     │  - REST API + fleet endpoints    │
+│  - starts watchers in every      │  :5600    │  - LDAP login, roles             │
+│    interactive user session      │ ────────► │  - per-day summary cache +       │
+│  - reports watcher version,      │           │    nightly precompute            │
+│    self-updates from the server  │           │  - Redmine (MySQL, read-only)    │
+│ Per user session:                │           │  - watcher auto-update endpoints │
+│  aw-watcher-afk / -window /      │           │  - aw-webui (built, static)      │
+│  -session / -audio               │           │ Data: C:\ProgramData\            │
+│ Per machine:                     │           │       ActivityWatchFleet         │
+│  aw-watcher-system (CPU/RAM)     │           └──────────────────────────────────┘
+└──────────────────────────────────┘
 ```
 
-## About this repository
+Every event carries identity metadata (`username`, `device_id`, `device_name`, `session_id`, `session_type`, `hostname`). `aw-watcher-session` is the source of truth for session state; the window watcher additionally captures the open document in Inventor and the folder open in Explorer. Watcher request queues are file-backed, so server outages are retried.
 
-This repo is a bundle of the core components and official modules of ActivityWatch (managed with `git submodule`). Its primary use is as a meta-package providing all the components in one repo; enabling easier packaging and installation. It is also where releases of the full suite are published (see [releases](https://github.com/ActivityWatch/activitywatch/releases)).
+## Key features on top of upstream
 
-### Server
+- **Fleet views** (Flotte): live devices, users, devices with CPU/RAM waves, summary (Auswertung) over any user/device/date selection. The Geräte list shows every device the fleet has ever heard from — offline ones included, with their last-seen time and last known users — so a switched-off PC stays clickable through to its history.
+- **Tagesvergleich**: per user and day, active session time vs. hours booked in Redmine, incl. project, comment, delta; usernames link into the single-user day view.
+- **Single-user view**: chunked per-day server-side summaries (multi-month ranges are cached and precomputed nightly), progress reporting (day X of Y, ETA), watcher timeline with system-load overlay, dynamic Y-axis.
+- **Audited event editing** (admins): edit/extend/create/delete events in all watcher rows; every change carries a server-stamped audit trail (`$edits`, `$manual`); deletes go to a trash bucket and can be restored.
+- **Auth and roles**: LDAP/AD login with a local `admin` break-glass account; admin-only pages (Zeitachse, Rohdaten, Einstellungen, Administration); per-user page grants and start pages. Grants are Live / Zusammenfassung / **Eigene Zusammenfassung** / Benutzer / Geräte — *Eigene Zusammenfassung* opens the same summary page restricted to the user's own data, so someone can see their own hours and Redmine comparison without seeing colleagues. The restriction is enforced server-side by rewriting the requested usernames, not by trusting the client. Every API route that a browser reads requires a login — there is no anonymous read path.
+- **Device enrollment**: install the watchers and walk away — the device generates its own key, registers itself, and appears under `Administration → Geräte` as *Wartet auf Freigabe* with its IP and a key fingerprint. One click approves it; from then on that key is its credential. A pending device records locally and sends nothing, losing no data (events queue and flush on approval). Revoking a device removes its access immediately, without re-keying the rest of the fleet.
+- **Machine authentication**: watchers and the update supervisor have no browser session, so they authenticate with a Bearer token — either their own enrolled key or a shared **fleet token** (`Administration → Fleet-Zugriffstoken`) provisioned by `install-watchers.ps1 -FleetToken <token>`. Enforcement ships **off** and must only be switched on once every device is approved or holds the token — otherwise those devices stop reaching the server.
+- **Moving the server**: `Administration → Server umziehen` announces a new address and every device switches to it by itself, so the server can move to another computer or IP without visiting a single PC. The server refuses to announce an address that no ActivityWatch server answers on, and each device re-checks before switching and refuses to move to something it cannot reach — a typo cannot strand the fleet. Announce it while the *old* server is still reachable; the devices learn it from the update check they already run every minute.
+- **Watcher updates**: the supervisor on every device polls the server once a minute, reports its package version, and installs newer packages headlessly (SHA256-verified). `Administration → Watcher-Updates` shows per-device versions and lets an admin **update devices manually** — tick checkboxes and press *Ausgewählte aktualisieren*, hit *Alle aktualisieren*, or use the per-row *Jetzt aktualisieren* button. A manual update bypasses the automatic switch and installs even when the version already matches, so it doubles as a repair. The panel also accepts direct package uploads, so watchers roll out fleet-wide without touching the server or any PC.
+- **Canonical session vocabulary**: every watcher detects the real Windows session type (`console` / `rdp` / `virtual` / `machine`) through one shared helper, and the server normalizes on read, so one physical session is never labelled two different ways.
+- **Crash-safe configuration**: `settings.json` — the only copy of the password hashes, the AD bind password and the Redmine credentials — is written atomically (temp file + fsync + rename) with a `.bak` generation the server recovers from automatically.
 
-ActivityWatch has two server implementations:
+## Repository layout
 
-- `aw-server` (Python) - The current default implementation
-- `aw-server-rust` - A Rust implementation that is the planned future default
+| Path | What it is |
+|---|---|
+| `aw-server/` | **Submodule (forked)** — the central server; nested submodule `aw-server/aw-webui` (forked web UI) |
+| `aw-core/`, `aw-client/` | Submodules (forked) — identity helpers, client queueing |
+| `aw-watcher-afk/`, `aw-watcher-window/` | Submodules (forked) — window watcher includes Inventor/Explorer enrichment |
+| `aw-watcher-session/`, `aw-watcher-audio/`, `aw-watcher-system/` | Custom watchers, plain directories in this repo |
+| `deploy/windows/` | Build + install scripts (IExpress setups, supervisor, installers) |
+| `rebuild-server-setup.cmd`, `rebuild-watchers-setup.cmd` | Double-click build chains (self-elevating) |
+| `diagnose-watchers.cmd`, `collect-fleet-logs.cmd` | Fleet diagnostics helpers |
+| `aw-qt/`, `aw-server-rust/`, `aw-tauri/`, `awatcher/`, `aw-notify/`, `aw-watcher-input/` | Upstream submodules, **unused** by the fleet deployment |
+| `ACTIVITYWATCH_HANDOFF.md` | Detailed, dated work log + current status (start here) |
+| `roadmap.md`, `fleet-sync-spec.md` | Original planning documents |
 
-Both provide a REST API to a datastore and query engine, and serve the web interface developed in the `aw-webui` project (which provides the frontend).
+## Building and releasing
 
-The REST API includes:
+Prerequisites on the build machine: Python venv at `.venv-build` with PyInstaller, Node/npm for the web UI. All builds are done through the root `.cmd` scripts (they self-elevate and clear locked outputs):
 
- - Access to a datastore suitable for timeseries/timeperiod-data organized in "buckets" (containers grouping related activity data by metadata like client type or hostname)
- - **Buckets API:** Create, retrieve, and delete data buckets
- - **Events API:** Read and write timestamped events within buckets
- - **Heartbeat API:** Watchers use heartbeat signals to update the current state of activity (e.g., active application, AFK status)
- - **Query API:** simple query scripting language for filtering, merging, grouping, and transforming events
- - **Client libraries:** Language-specific libraries like `aw-client` (Python), `aw-client-js`, and `aw-client-rust` that wrap REST endpoints for programmatic access
+1. **Watchers changed** → `rebuild-watchers-setup.cmd`
+   packages all watcher PyInstaller dists into `dist\deployment\ActivityWatch-Fleet-Watchers-Setup.exe`, writes the auto-update `manifest.json` (version = SHA256 of `payload.zip`), and produces `dist\deployment\ActivityWatch-Fleet-Watchers-Update.zip`.
+2. **Distribute the watcher update** — either:
+   - upload `ActivityWatch-Fleet-Watchers-Update.zip` in the admin GUI (`Administration → Watcher-Updates`) — no server rebuild needed, devices pick it up within a minute (when auto-update is enabled), or
+   - run `rebuild-server-setup.cmd`, which embeds the latest watcher package into the server build, and reinstall the server.
+3. **Server changed** → `rebuild-server-setup.cmd`
+   builds the web UI, copies it into `aw_server/static`, stages the watcher package, builds the PyInstaller server, and packages `ActivityWatch-Fleet-Server-Setup.exe`. Install it on LS (re-running the setup is an update and preserves data).
 
-The frontend (`aw-webui`) includes:
+After a server/UI deploy, hard-reload (`Ctrl+F5`) once. The server sends `Cache-Control: no-cache` for `index.html` and the JS/CSS bundles are content-hashed, so that is normally enough; if a browser still shows the old UI, use DevTools → Application → Storage → *Clear site data*. Note that despite `@vue/cli-plugin-pwa` emitting a `service-worker.js`, this UI never registers one — there is no service worker to unregister.
 
- - **Data visualization:** Dashboard and timeline views showing activity summaries with detailed breakdowns of app usage, web browsing, and user-defined categories
- - **Query explorer:** Browser-based interface for writing, executing, and debugging queries with real-time results
- - **Activity browser:** Navigate through historical data with filtering by date ranges, applications, websites, and custom categories
- - **Raw data access:** View and browse individual events from all tracking buckets with detailed metadata
- - **Export functionality:** Export activity data in JSON format (individual buckets or complete datasets) via web interface or REST API
+## Operations
 
-### Watchers
+- Supervisor log per device: `C:\ProgramData\ActivityWatchFleet\logs\supervisor.log`; headless installs: `...\logs\install-watchers.log`; per-user watcher logs: `%LOCALAPPDATA%\ActivityWatchFleet\logs\watchers`.
+- `diagnose-watchers.cmd` dumps a full watcher-state report on a device; `collect-fleet-logs.cmd` gathers logs from the fleet via admin shares into `diagnostics\`.
+- Server data (SQLite + `settings.json`) lives under `C:\ProgramData\ActivityWatchFleet` on LS — **back it up**. `settings.json` is written atomically and keeps a `settings.json.bak` the server recovers from, but that only protects against the last bad write, not against a bad edit or a disk failure. A `settings.json.corrupt-<timestamp>` file means the server rejected an unreadable config and fell back — investigate rather than delete it.
+- Device credential: `C:\ProgramData\ActivityWatchFleet\fleet-token.txt` — either the key the device generated at enrollment, or a shared token provisioned with `install-watchers.ps1 -FleetToken <token>` (omitting the switch keeps the existing one, so updates never lose it). `set-fleet-token.ps1`, shipped in the watcher payload, sets it after the fact.
+- Announced server address: `C:\ProgramData\ActivityWatchFleet\server-endpoint.txt`. Present only after a server move has been announced; delete it to fall back to the address baked into the watcher package.
+- Rolling out watchers: build → upload the `Update.zip` in `Administration → Watcher-Updates` → tick the devices and press *Ausgewählte aktualisieren* (or leave automatic updates on and wait a minute). Devices that have never reported show *Nie gemeldet* — those still need one manual installer run, because they are running a supervisor from before the auto-update feature and never poll the server.
+- `commit-current-version.cmd` commits all pending changes across the nested submodules and the root repo in the right order.
 
-ActivityWatch comes pre-installed with two watchers:
+## Upstream
 
- - `aw-watcher-afk` tracks the user active/inactive state from keyboard and mouse input
- - `aw-watcher-window` tracks the currently active application and its window title.
-
-There are lots of other watchers for ActivityWatch which can track more types of activity. Like `aw-watcher-web` which tracks time spent on websites, multiple editor watchers which track spent time coding, and many more! A full list of watchers can be found in [the documentation](https://docs.activitywatch.net/en/latest/watchers.html).
-
-### Libraries
-
- - `aw-core` - core library, provides no runnable modules
- - `aw-client` - client library, useful when writing watchers
-
-### Folder structure
-
-<span><img src="https://raw.githubusercontent.com/ActivityWatch/activitywatch/master/diagram.svg" width="60%"></span>
-
-## Contributing
-
-Want to help? Great! Check out the [CONTRIBUTING.md file](./CONTRIBUTING.md)!
-
-## Questions and support
-
-Have a question, suggestion, problem, or just want to say hi? Post on [the forum](https://forum.activitywatch.net/)!
-
+Based on [ActivityWatch](https://activitywatch.net/) (MPL-2.0, see `LICENSE.txt`). This fork intentionally trades upstream generality (multi-platform, privacy-first single-user) for centralized Windows fleet tracking. The upstream host-centric views (`Activity`, `Search`, `Report`, `Graph`, `Trends`, `Alerts`, `Timespiral`, Query explorer) have had their routes removed — they are unreachable and no longer bundled — but the `.vue` files remain in the tree, so restoring one is a single entry in `src/route.js`.

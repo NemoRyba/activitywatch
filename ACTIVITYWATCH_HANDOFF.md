@@ -1,118 +1,585 @@
 # ActivityWatch Fork Handoff
 
-Date: 2026-08-24
+Date: 2026-08-25
 Repo: `C:\projecte_visual_code\activitywatch`
 
-## 0. Latest Status - 2026-08-24
+## 0. Latest Status - 2026-08-25 (evening)
 
-The current priority is finishing the LAN fleet deployment and iterating on the server-side fleet/admin UI.
+Everything below the old "Rebuild sequence" line has now been BUILT. The repo,
+the watcher dists and both setup exes are in sync for the first time in several
+rounds. What is left is the part that can only happen on the target machines:
+installing the server on LS and running the watcher installer once per device.
 
-Validated outputs:
+### Freshly built artefacts (this round)
 
-- `dist\deployment\ActivityWatch-Fleet-Server-Setup.exe`
-- `dist\deployment\ActivityWatch-Fleet-Watchers-Setup.exe`
+- Server setup SHA256: `CEE1FE55DF16720B15831B14065E8F4058C114DA892CFB8B4F4ABB20188A07A0`
+- Watchers setup SHA256: `2BA7E6A28F808C68B64E830126FBE4A12436799F73098E5DE1F1E7BD5A517D0C`
+- Watchers update zip SHA256: `494DB2BC3BBF409B3BFEC8C2233AB62C0448952A013560C88A9147894778AA02`
+- Watcher package version (= SHA256 of payload.zip, embedded in the server):
+  `57a425e44a63ca18bc64a52415718bbc53d07a3ccaf023fef221205d443a1e0c`
+- Watchers preconfigured for `http://192.168.0.144:5600/`
+- All FIVE watcher PyInstaller dists were rebuilt. aw-core changed this round,
+  so every watcher had to be rebuilt, not just aw-watcher-window.
 
-Latest validated setup hashes:
+### Steps 1-3 of the old rebuild sequence: DONE
 
-- Server setup SHA256:
-  `2827B43BECA42CE19F8C8126BBCE50555E7748C54CB2122F1046622B23768C5E`
-- Watchers setup SHA256:
-  `F53C57C8758295B411E2B577DE50CE95D8AFDE592BDF62C2466C8C875A354AA3`
+1. All watcher dists rebuilt with PyInstaller. DONE
+2. `build-setup.ps1 -Target Watchers` -> setup exe + `manifest.json` +
+   `ActivityWatch-Fleet-Watchers-Update.zip`. DONE
+3. `rebuild-server-setup.ps1` -> web UI built, copied into `aw_server/static`,
+   watcher package embedded (step 4/6), PyInstaller server, setup exe. DONE
 
-Latest code/package commit pointers on `central-fork`:
+### Steps 4-5: STILL TO DO ON THE TARGET MACHINES
 
-- root `activitywatch` package commit: `5d3e69d Package trimmed nav, audited editing, and daily comparison`
-- nested `aw-server`: `5a85a76 Add event audit trail, Redmine daily comparison, chunked summaries`
-- nested `aw-server/aw-webui`: `9479883 Replace settings state on load instead of merging`
+4. Install `ActivityWatch-Fleet-Server-Setup.exe` on LS once. Afterwards
+   press Ctrl+F5 once in each browser.
 
-This handoff may have a newer root docs-only commit after `5d3e69d`; the setup hash above is the reliable identity for the packaged server installer.
+   NOTE, corrected 2026-08-25: earlier revisions of this file said to
+   "unregister the PWA service worker". That was never true for this fork. The
+   build generates `service-worker.js` and links `manifest.json` (from
+   `@vue/cli-plugin-pwa`), but NOTHING calls `serviceWorker.register()` - not
+   in `src/main.js`, not in `index.html`, not in the built bundle, and not
+   anywhere in tracked history. No service worker is ever installed, so there
+   is nothing to unregister. The server also sends `Cache-Control: no-cache`
+   for `/` and `/index.html`, and the JS/CSS are content-hashed, so a stale UI
+   should not survive a hard reload. If one somehow does, use DevTools ->
+   Application -> Storage -> "Clear site data"; that covers every cause.
+5. Run `ActivityWatch-Fleet-Watchers-Setup.exe` ONCE per device by hand. This is
+   unavoidable for the first hop: a device only learns about GUI-triggered
+   updates once it runs the NEW supervisor, and the new supervisor can only
+   arrive with a package install. From the second generation on, every rollout
+   goes through the GUI.
 
-The watcher setup is preconfigured for:
+   While doing that pass, decide about the fleet token (section 0.3). If you
+   intend to switch token enforcement on, install with:
 
-- `http://192.168.0.144:5600/`
+   ```
+   install-watchers.ps1 -FleetToken <token from Administration -> Fleet-Token>
+   ```
 
-Deployment behavior:
+   Running the installer without `-FleetToken` keeps whatever token the device
+   already has, so later updates never lose it.
 
-- server setup installs to `C:\Program Files\ActivityWatch Fleet Server`
-- server starts as scheduled task `ActivityWatch Fleet Server`
-- server binds to `0.0.0.0:5600` so the web UI/API can be reached from the LAN
-- server runtime data is redirected to `C:\ProgramData\ActivityWatchFleet`
-- server setup can now move an existing server database/runtime data directory during update; it prompts for an empty target folder, moves the data there, and stores the selected path in `HKLM\Software\ActivityWatchFleet\DataRoot` plus an install-folder `data-root.txt` fallback
-- watcher setup installs AFK/window/session/audio watchers to `C:\Program Files\ActivityWatch Fleet Watchers`
-- watcher setup registers scheduled task `ActivityWatch Fleet Watchers Supervisor` as `SYSTEM`; it launches the per-user watchers inside every active interactive user session and repeats once per minute to catch fast-user-switching/new logons
-- watcher setup also creates an all-users Startup shortcut as a fallback
-- watcher setup stages the per-user audio watcher and the system CPU/RAM watcher; CPU/RAM runs through a machine-level scheduled task named `ActivityWatch Fleet System Watcher`
-- watchers use central mode against `192.168.0.144:5600`
-- watcher request queues are file backed through `aw-client`, so temporary server/network outages are retried after the server returns
-- both setups now self-elevate: running them without admin rights triggers a UAC prompt instead of an error, and the elevated window stays open until Enter
-- the watcher setup waits (default 60s, `-StartupTimeoutSeconds`) for the watchers to come up and starts any the supervisor missed directly in the installing user's session
-- the watcher supervisor logs every run to `C:\ProgramData\ActivityWatchFleet\logs\supervisor.log`, including each enumerated session and why one was skipped
-- `diagnose-watchers.cmd` at the repo root collects a full watcher-state report from a deployed machine into `watcher-diagnostics.txt`
-- the web UI nav is trimmed for fleet use: no Activity menu, no Tools ("Werkzeuge") menu, and no external links in the footer; the routes behind them still work by direct URL
+   You can also skip `-FleetToken` entirely and use device enrollment
+   instead (section 0.8): install, then approve each device under
+   `Administration -> Geraete`. Nothing has to be carried to the machine.
 
-Validation done on this working machine:
+### Smoke-tested against the PACKAGED binaries, not just the source
 
-- web UI build succeeded with `npm run build`
-- built web UI assets were copied into `aw-server\aw_server\static`
-- PyInstaller builds exist for server, AFK watcher, window watcher, session watcher, audio watcher, and CPU/RAM system watcher
-- packaged `aw-server.exe --version` returns `v0.13.2.dev+e5983e5`
-- packaged server starts on a test port and returns `/api/0/info`
-- deployment setup builder completed successfully for the server setup after the latest web UI change
-- both setups were rebuilt on 2026-08-24 after the navigation cleanup; the watcher setup hash changed too
-- non-admin smoke install into temp folders passed for both payloads
+The built `aw-server.exe` was started on port 5699 and driven over HTTP:
 
-Important deployment caveats:
+- unauthenticated GETs of `/fleet/live`, `/fleet/users`, `/fleet/summary`,
+  `/fleet/devices`, `/buckets/`, `/export`, `/settings` -> all 401
+- machine endpoints (`watcher-update/manifest|payload|status`, bucket
+  create/heartbeat/events, `fleet/sync/*`) -> reachable with enforcement off,
+  401 without a token and 200 with the token once enforcement is on
+- the fleet token does NOT unlock browser or admin endpoints (still 401)
+- manual update round trip: request -> `manifest?hostname=` reports it (only to
+  that device, case-insensitively) -> device acknowledges -> device reports the
+  target version -> request clears automatically
+- `settings.json` and `settings.json.bak` both written and both parseable
+- one physical session with a legacy `interactive` window bucket and a `console`
+  session bucket now resolves deterministically to `console`
 
-- these setup executables are unsigned
-- this build machine was not verified to own `192.168.0.144`; the packages are prepared for the intended server machine with that address
-- run setup files as Administrator on target machines
-- after changing web UI code later, rebuild `aw-server\aw-webui`, copy assets into `aw-server\aw_server\static`, then rebuild/server-package again
-- on this Windows build machine, PyInstaller may try to resolve a locked roaming profile path under `\\dc\profiles$`; set build-local `USERPROFILE`, `HOME`, `APPDATA`, `LOCALAPPDATA`, `TEMP`, `TMP`, `PYTHONNOUSERSITE=1`, and `PYINSTALLER_CONFIG_DIR` before running PyInstaller if that happens
+Unit tests: **56 passed, 0 failed, 0 errors** - the suite is green for the first
+time, from 5 failed / 18 passed / 15 errors at HEAD. `pytest tests/` also works
+with the project's own coverage settings now. See section 0.11 for what was
+wrong; one of the four failures turned out to be a real product bug.
 
-Latest fleet UI fixes:
+## 0.1 Manual watcher updates from the GUI (new)
 
-- fleet single-user range apply/refresh now shows a spinner and elapsed seconds while the user detail request is running
-- fleet single-user activity summary now shows a lightweight loading panel with elapsed time, loaded bucket count, current bucket name, progress bar, cancel button, and restart button
-- fleet single-user activity summary now loads matching watcher buckets sequentially instead of firing all long-range bucket event requests in parallel; this avoids the page appearing frozen for long ranges such as `mstep` from `2026-08-01` to `2026-08-24`
-- canceling the fleet single-user activity summary calls the ActivityWatch web client's `abort()` hook so in-flight API calls are aborted and the request controller is reset
-- after production testing showed the 24-day `mstep` range still took about 2 minutes and hover/click froze the browser after load, ranges over 7 days now render the same timeline/category diagram panels from server-side aggregate data via `/api/0/fleet/users/<username>/activity-summary` instead of sending raw window-event dumps to the browser
-- same-day range selection no longer leaves the fleet user summary permanently loading
-- chart x-axis hover no longer triggers repeated redraw loops
-- AFK hatch overlay is shown only when the AFK checkbox is enabled
-- timeline chart uses a sticky y-axis rail so the hour scale remains visible while horizontally scrolling
-- chart legend was removed; category details now live in the category tree below the chart
-- chart bottom-label hover shows total bucket detail, category totals, and total AFK for that time bin
-- chart segment hover shows only that segment/category detail
-- category tree starts collapsed to avoid clutter
-- category tree category paths are de-duplicated, so `Uncategorized`, `Comms`, and `IM` are shown once instead of repeated
-- start page settings now include `Fleet`
-- fleet user detail view now defaults the start date to today instead of the previous 7-day window; the date input remains user-pickable
-- fleet user detail view now has a direct user selector in the header so users can switch without returning to the fleet user list
-- fleet summary filters now expose a checked-by-default `Subtract AFK time` checkbox; internally this reuses the existing inverse `fleetSummaryShowAfkTime` setting for compatibility
-- fleet user summary shows a raw daily watcher timeline below the bar chart when the selected range is one day; watchers can be toggled on/off and swimlanes can be switched like the Timeline page
-- fleet devices view now loads `/api/0/fleet/devices/metrics` and shows per-device CPU/RAM wave sparklines for the selected recent time window
-- category edit now uses a full hue/saturation color picker with native color input and hex entry instead of the limited compact palette; dark-mode styling was added for the picker popover
-- fleet user/device detail views now have a checked-by-default `Only count AFK while session is active` option; this is separate from the chart-only `Subtract AFK time` filter
-- event edit modals now include a compact category rule creator: pick an event data field (`app`, `title`, `process_name`, `process_path`, etc.), generate/edit a regex, then append it to an existing category or create a new category path
+Administration -> Watcher-Updates now has a device table with checkboxes,
+"Alle auswählen", "Ausgewählte aktualisieren", "Alle aktualisieren" and a
+per-row "Jetzt aktualisieren" button.
 
-Latest server summary fix:
+How it works, and why it works this way: the server cannot push to a device. An
+"update now" click writes a per-device pending request
+(`_watcher_update_requests` in settings.json). The supervisor already polls
+`GET /api/0/fleet/watcher-update/manifest` once a minute; it now appends
+`?hostname=$env:COMPUTERNAME`, so the answer can carry that device's request.
+No extra HTTP request, no inbound connection to the device.
 
-- fleet user/device summary cards now merge overlapping state intervals per user/device/session before summing
-- this fixes inflated AFK totals caused by duplicated overlapping `afkstatus` rows
-- fleet user/device summaries can now exclude AFK intervals outside `sessionstate = active`; locked, disconnected, logged-in-only, logged-off, and no-session periods no longer inflate AFK totals when this option is enabled
-- observed July 21 Stepik example before the fix: naive AFK row sum was about 12h 16m
-- observed same range after the fix and stack restart: AFK card dropped to about 3h 17m at the time of verification
-- regression coverage added in `aw-server\tests\test_server.py`
-- fleet server tests passed with `python -m pytest -o addopts= aw-server\tests\test_server.py -k fleet`
-- server PyInstaller output and deployment setup EXEs were rebuilt after this fix
-- field-scoped category rule matching is covered by `npx jest --selectProjects node --runTestsByPath test/unit/classes.test.node.ts --coverage=false`
+Semantics worth knowing:
 
-Current local notes:
+- A manual request bypasses the `auto_update_enabled` switch entirely.
+- It also installs when the reported version already matches, so the button
+  doubles as a repair/reinstall.
+- It bypasses the 15-minute cooldown exactly ONCE, tracked by `request_id` in
+  `%ProgramData%\ActivityWatchFleet\update\state.json`. A permanently failing
+  install therefore falls back to the normal 15-minute rhythm instead of
+  re-downloading the package every minute.
+- The request clears itself when the device reports the target version. It also
+  expires after `manual_update_ttl_minutes` (default 360) so a device that is
+  switched off does not stay pending forever.
+- Requests are keyed by lower-cased hostname, because `_watcher_update_status`
+  is keyed by the raw `$env:COMPUTERNAME` while never-reported rows come from
+  the fleet device name.
+- Devices still running a pre-auto-update supervisor never poll at all. They
+  show "Nie gemeldet", the checkbox cannot reach them, and the panel says so.
+- "Alle aktualisieren" makes every device download payload.zip within the same
+  minute. On ~20 devices over a LAN that is fine; the confirm dialog states the
+  device count and warns about the short recording gap while watchers restart.
 
-- deployment setup EXEs were rebuilt after the 2026-07-22 fleet UI/raw event updates
-- watcher setup was changed after a deployment bug where rerunning setup under one/admin user only started the installer user's watchers; the fixed setup uses the SYSTEM supervisor task to start watchers in each active logged-in user's own Windows session
-- root `backups\` contains local runtime cleanup exports and is intentionally not part of the deployment build
-- `aw-watcher-audio` now reports per-user playback/microphone activity and `aw-watcher-system` now reports CPU/RAM usage; watcher setup must be rebuilt and redeployed to watcher machines before audio/RAM data appears in fleet views
+New endpoints: `POST /api/0/fleet/watcher-update/request` (admin) and `DELETE`
+on the same path to cancel pending requests.
+
+## 0.2 settings.json is now crash-safe (fixes section 5.7)
+
+`Settings.save()` used to be `open(path, "w")` + `json.dump(indent=4)`. That
+truncates the file to zero bytes before the first new byte exists, and
+`indent=4` makes json.dump emit hundreds of small writes, so the window is wide.
+`load()` had no recovery at all.
+
+What that meant in practice - this file is the ONLY copy of the password hashes,
+the AD bind password, the Redmine DB password, the per-user page grants and the
+LDAP config:
+
+- a crash / power loss / disk-full mid-write left a truncated or zero-byte file;
+- `json.load` then raised out of `Settings.__init__`, i.e. before Flask was even
+  constructed, so aw-server.exe died at startup and the scheduled task (AtStartup
+  trigger only) never brought it back;
+- and if the damaged file still parsed but had lost `_auth_users`,
+  `_ensure_internal_defaults` silently recreated `admin` with the password
+  `admin`, minted a new session secret and dropped LDAP/Redmine - a LAN-facing
+  admin UI back on default credentials, with nothing logged;
+- Flask runs `threaded=True` and `settings.py` had no lock, so two request
+  threads could both be inside `open(path,"w")`, and a `del self.data[key]`
+  landing inside another thread's `json.dump` raised "dictionary changed size
+  during iteration" - corruption with no crash and no disk problem involved.
+
+Now:
+
+- `save()` serializes FIRST (so a concurrent mutation raises before the file is
+  touched), writes a temp file in the same directory, `flush()` + `fsync()`,
+  copies the current file to `settings.json.bak`, then `os.replace()` - atomic
+  on NTFS - with a retry loop for the PermissionError you get while Defender or
+  a backup agent holds the file. It never degrades to a truncating write.
+- Identical payloads are skipped, so the several getters that normalize-and-save
+  no longer rewrite the file for nothing.
+- `load()` falls back to `settings.json.bak` when the primary is unreadable, and
+  quarantines the unusable file as `settings.json.corrupt-<timestamp>` instead
+  of overwriting it. The backup lags by exactly one save, so recovery loses at
+  most the most recent change - never the accounts or the credentials.
+- A `synchronized` decorator (re-entrant lock) serializes every mutator and every
+  normalizing getter.
+- Recreating the built-in admin now logs at ERROR instead of happening silently.
+
+Still worth doing operationally: a daily copy of
+`C:\ProgramData\ActivityWatchFleet` (the `.bak` only protects against the last
+bad write, not against a bad admin edit), and a Defender exclusion for that
+folder.
+
+## 0.3 API authentication (replaces section 5.8)
+
+Two corrections to what section 5.8 used to claim:
+
+1. Fleet GETs were NOT open. `server.py::_enforce_api_auth` has required a login
+   for every `/api` route except a small allowlist since April 2026. The old
+   note was stale.
+2. That allowlist had a real bug: `/api/0/fleet/watcher-update/*` was never added
+   to it, so every supervisor poll was answered with 401. The watcher
+   auto-update feature could not have worked in the field, and the admin device
+   table would have stayed empty. Fixed this round.
+
+The model is now explicit, in `server.py`:
+
+- `PUBLIC_API_PATHS`: `/0/info` and the three `/0/auth/*` routes. `/0/info` stays
+  open because every aw-client uses it as the "is the server up?" probe before
+  it could authenticate.
+- `MACHINE_API_PATHS` + bucket writes: watcher ingest (bucket create/PUT, events,
+  heartbeat), the four watcher-update routes, and the two fleet-sync routes.
+  These have no browser session, so they authenticate with the FLEET TOKEN
+  (`Authorization: Bearer <token>`, or `X-AW-Fleet-Token`).
+- Everything else - every fleet read, buckets, events, query, export, settings,
+  all admin endpoints - requires a logged-in session (local `admin` or LDAP).
+  The token deliberately does NOT unlock any of them.
+
+The token lives in `_fleet_auth_config` and is generated on first access.
+Administration -> Fleet-Zugriffstoken shows it, copies it, and rotates it.
+
+ENFORCEMENT SHIPS OFF, ON PURPOSE. Turning `require_watcher_token` on before the
+devices hold the token stops the whole fleet from recording. The switch has a
+confirm dialog saying exactly that. Sequence: install the new watchers with
+`-FleetToken <token>` everywhere, then flip the switch.
+
+Device side:
+
+- `install-watchers.ps1 -FleetToken <token>` writes
+  `%ProgramData%\ActivityWatchFleet\fleet-token.txt` (Administrators/SYSTEM full,
+  Users read). It sits outside the install dir, so a watcher update cannot lose
+  it; omitting the parameter keeps the existing token.
+- `aw-client` reads it via `AW_FLEET_TOKEN` -> that file -> `[server]
+  fleet_token` in the aw-client config, and sends it as a Bearer token.
+- The supervisor sends the same header on manifest/payload/installer/status.
+- `aw-client`'s request queue now treats 401/403 as RETRYABLE. Previously an
+  unexpected status meant "unknown error, not retrying" and the heartbeat was
+  discarded, so a token misconfiguration would have silently destroyed data
+  instead of queueing it.
+
+Remaining known gap: the watcher-update payload is SHA256-verified against the
+server manifest but not signed, so the server (by IP) is still trusted.
+
+## 0.4 Session type labels are normalized (fixes section 5.3)
+
+The mismatch was real and worse than section 5.3 suggested. `aw-watcher-session`
+derived `console`/`rdp` from the WTS client protocol, while `aw-watcher-afk` and
+`aw-watcher-window` shipped the literal default `"interactive"` and
+`aw-watcher-audio`/`-system` shipped `""`, which `resolve_identity` rewrote to
+`"interactive"`. Nothing reconciled them, so one physical session appeared as
+"Sitzung 2 (console)" next to "Sitzung 2 (interactive)", and `/fleet/live` picked
+whichever bucket the dict iteration reached first.
+
+Canonical vocabulary, in `aw-core/aw_core/identity.py`:
+
+- session_type: `console` | `rdp` | `virtual` | `machine` | `unknown`.
+  `"interactive"` is gone as a stored value - it was never a session type, it was
+  the absence of detection - and maps to `unknown`. `virtual` is new, for WTS
+  protocol 1 (ICA/Citrix), which used to be mislabelled `interactive`.
+- session state: `active` | `locked` | `disconnected` | `logged_in` |
+  `no_session`. `logged_off` is produced by nothing in this repo and now aliases
+  to `no_session` on read.
+
+Applied at both ends, so no data migration is needed:
+
+- WRITE: `resolve_identity()` is the single choke point every watcher goes
+  through. It now calls `detect_windows_session_type()` (one WTS query on the
+  process's own session) so afk/window/audio report the same real value the
+  session watcher does. A stale on-disk `aw-watcher-afk.toml` saying
+  `session_type = "interactive"` normalizes to `unknown` and therefore falls
+  through to detection - upgraded devices are not pinned to the placeholder.
+- READ: `fleet.get_bucket_identity()` and `_merge_identity()` normalize, and an
+  event-level `interactive` can no longer overwrite a bucket-level `console`.
+  `bucket_backfill` rewrites stored `session_type` values in place at startup.
+- `/fleet/live` now prefers the sessionstate bucket for `session_type` instead of
+  relying on dict order.
+
+Cost: ~0.6 ms once per watcher process at startup, and ~1 microsecond per poll in
+the session watcher. Nothing was added to any sampling loop.
+
+## 0.5 Legacy upstream views are unreachable (fixes section 4 / 5.1)
+
+The nav entries went on 2026-08-24; the routes are gone now, so typed URLs hit
+NotFound too and the code is no longer bundled. Removed from `route.js`:
+`/activity/:host/...` (parent plus both children), `/trends`, `/trends/:host`,
+`/report`, `/query`, `/alerts`, `/timespiral`, `/search`, `/graph`.
+
+Deliberately KEPT:
+
+- `/stopwatch` - explicit fork decision in section 5.4: the code stays and the
+  admin can re-enable it (`show_stopwatch_menu`); the route guard already
+  redirects when that is off.
+- `/dev` - developer diagnostics, now `adminOnly`.
+- `/buckets`, `/buckets/:id`, `/timeline`, `/settings`, `/admin` - all now carry
+  `meta.adminOnly` explicitly rather than relying only on the non-admin
+  whitelist.
+
+The `.vue` files are still in the tree, so restoring one is a single route entry.
+Two follow-ups were needed for this to be safe:
+
+- `landingPage.ts::resolveLandingPage` clamps a personal start page to
+  `ADMIN_LANDING_PAGES`; an admin whose stored `landingpage` was
+  `/activity/<host>` would otherwise have landed on the 404 page.
+- `Header.vue` still built an `activityViews` array of `/activity/<host>` URLs in
+  `mounted()` for a menu that no longer exists. Removed; the bucket-store prime
+  it also did is kept.
+
+Not done, deliberately: the now-orphaned component files
+(`SelectableVisualization.vue`, `Timespiral.vue`, `ForceGraph.vue`,
+`PeriodUsage.vue`, `stores/activity.ts`, ...) and their `main.js` registrations
+are still present. They are lazy imports, so nothing fetches them; deleting them
+is cosmetic and would make restoring a view harder.
+
+## 0.6 aw-agent-windows: what it is, and why it stays parked
+
+WHAT IT IS FOR. A laptop that is off the LAN (customer site, VPN down, server
+rebooting) should still record locally and push everything it missed on
+reconnect - exactly once, no gaps, no double-counted time. The design is
+"local-first": every device runs its OWN aw-server on 127.0.0.1, the watchers
+talk only to that, and `aw-agent-windows` is the only process that talks to
+central. It scans the local database, turns local events into an immutable
+numbered "outbox" log, and uploads that log in batches.
+
+WHAT ACTUALLY EXISTS. The receiving half is complete and covered by tests in
+`aw-server/tests/test_server.py`: `POST /api/0/fleet/sync/handshake` and
+`/batch`, a per-stream `last_acked_seq` cursor, all-or-nothing transactional
+batches, and idempotent upsert keyed by `(stream_id, source_event_id)` plus
+version and checksum, so a resend after an ambiguous network failure is provably
+harmless. There is even self-healing repair of duplicates from markers embedded
+in the events. On the device side the durable outbox schema, the stable agent
+identity, the handshake/batch client and the batch sizing all exist.
+
+WHAT IS MISSING. The one piece that reads the local database and writes into the
+outbox. `local_scan.py` does not exist; nothing anywhere calls
+`enqueue_bucket_upsert`, `enqueue_event_upsert` or `record_source_event_state` -
+those functions have zero call sites. So `main.py` finds no streams, returns
+immediately, and the agent logs "uploaded_ops=0" every 10 seconds forever. It is
+a no-op today.
+
+IS IT REDUNDANT? Partly, and honestly so. `aw-client` already has a durable
+file-backed queue (`persistqueue`, SQLite on disk) and every watcher in this fork
+uses `queued=True`, so "server down for an hour" is already covered. What the
+agent would add that the queue structurally cannot:
+
+- an idempotency key - the queue has none, so an ambiguous failure means either a
+  lost or a double-sent event, with no way to tell. On data that feeds time
+  reporting, silently double-counted hours are a business problem, not just a
+  technical one.
+- no silent data loss - the queue discards anything the server 400s and anything
+  that raises unexpectedly, permanently, with only a log line. (This round
+  narrowed that: 401/403 are now retried rather than discarded.)
+- auditability - "how far behind is this machine?" has no answer today.
+
+COST TO FINISH. The scanner itself is small, roughly 150-250 lines plus wiring;
+call it 1-2 days. That is not the real cost. Making it deliver its promise also
+needs exponential backoff, outbox pruning, 409/400 handling in the agent,
+sync-status endpoints, packaging into the installers (it is in no build file
+today), and - the big one - installing a local aw-server on every device and
+repointing every watcher at 127.0.0.1. That is a fleet-wide rollout,
+realistically 2-4 weeks including staged deployment.
+
+RECOMMENDATION. On a reliable LAN the aw-client queue is adequate; leave the
+agent parked. Finish it if the fleet gains genuinely disconnected machines, or if
+this data ever drives billing or payroll. Either way: running the agent as
+designed WITHOUT first moving the watchers to a local aw-server would
+double-write events - `fleet-sync-spec.md` warns about exactly that.
+
+## 0.8 Device enrollment (devices register, admin approves)
+
+Replaces carrying a secret to every machine. Install the watcher setup and walk
+away; the device asks to join and you approve it in the GUI.
+
+Flow:
+
+1. On first start the supervisor generates a 256-bit key, stores it in
+   `%ProgramData%\ActivityWatchFleet\fleet-token.txt` (the same file the shared
+   token uses, so `aw-client` needed no change at all) and POSTs it to
+   `/api/0/fleet/enroll` with hostname and package version.
+2. The device appears under `Administration -> Geräte` as *Wartet auf Freigabe*,
+   with its IP, first-seen time and a short key fingerprint.
+3. One click approves it. From then on that key is its credential, sent as the
+   same `Authorization: Bearer` header the shared token uses.
+
+Properties worth knowing:
+
+- **Enrolling grants nothing.** A pending device is refused by the same auth
+  gate as an unknown caller. Verified: with enforcement on, a pending key gets
+  401 and the same key gets 200 immediately after approval.
+- **Nothing is lost while pending.** aw-client queues events to disk, and 401/403
+  are retryable since section 0.3, so a device records from minute one and
+  flushes on approval.
+- **Only the SHA256 of the key is stored**, and it doubles as the record id, so
+  authenticating a request is one dict lookup. SHA256 rather than a password KDF
+  is correct here because the key is 256 bits of randomness, not a human-chosen
+  secret - and a KDF per heartbeat would be far too slow.
+- **Re-enrolling is idempotent** and never downgrades an approved device, so the
+  supervisor can re-post on every start.
+- **The open endpoint is capped** at `MAX_PENDING_DEVICES` (200) so nobody on the
+  LAN can grow settings.json without bound.
+- Revoking sets the device back to rejected; access disappears immediately.
+- A re-imaged device loses its key and reappears as pending - correct, but
+  expect it and compare the fingerprint before approving.
+
+The shared fleet token still works and remains the break-glass path. Enrollment
+is additive: same header, same file, same server-side check.
+
+New endpoints: `POST /0/fleet/enroll` and `GET /0/fleet/enroll/status` (both
+public, by necessity), `GET|POST|DELETE /0/fleet/devices/enrollment` (admin).
+
+## 0.9 Moving the server to another machine / IP
+
+Before this, the server address was baked into the watcher package at build time
+(`build-setup.ps1 -ServerHost`), so moving the server meant rebuilding the
+watchers AND visiting every device - and there was a trap: devices poll the OLD
+server for updates, so retiring it first left no way to tell them anything.
+
+Now `Administration -> Server umziehen` announces the new address, and devices
+pick it up from the manifest they already poll every minute.
+
+Correct order (the GUI states it too):
+
+1. Start the new server and give it the fleet data. Restoring
+   `C:\ProgramData\ActivityWatchFleet` also carries the token and the approved
+   device keys across, so devices keep working without re-approval.
+2. On the OLD server - still reachable by the devices - announce the new
+   address.
+3. Wait until `Administration -> Watcher-Updates` shows the devices reporting to
+   the new server.
+4. Retire the old server.
+
+Two independent safety checks, because a wrong address here strands the fleet:
+
+- The **server** refuses to announce an address unless an ActivityWatch server
+  actually answers `/api/0/info` there. (Override with "announce anyway" only if
+  you know the new server is not up yet.)
+- Each **device** verifies the announced address itself before switching, and
+  refuses to move to something it cannot reach - so a typo, or a server the
+  device cannot route to, leaves it exactly where it was. Verified against two
+  live servers: a dead address is logged and ignored, a live one is adopted.
+
+Device side: the override lives in
+`%ProgramData%\ActivityWatchFleet\server-endpoint.txt`, outside the install
+directory, so a watcher update cannot lose it. `supervise-watchers.ps1`,
+`start-watchers.ps1` and `start-system-watcher.ps1` all read it and fall back to
+the baked-in address when it is missing or malformed. After a switch the
+supervisor stops the watchers so they restart against the new address - they
+read `--host`/`--port` only at startup.
+
+Clearing the announcement does NOT move devices back; devices that already
+switched keep the new address. Only clear it once the whole fleet has moved.
+
+## 0.11 The test suite is green (and one failure was a real bug)
+
+The suite had 5 failures and 15 errors at HEAD. All of them are fixed. What each
+one actually was:
+
+**1. A real product bug: a device showed no users for any past range.**
+`summarize_device` derived its user list from `summarize_live_state`, which only
+keeps sessions updated within the last two minutes. So opening
+`/fleet/devices/<id>` for yesterday, last week, or any historical range listed
+*no users at all* - the page silently looked empty rather than wrong. It now
+takes the users with watcher activity in the SELECTED RANGE, unioned with
+whoever is logged in right now (`_users_seen_on_device`). It runs inside the
+request-scoped event cache and reads bucket identity rather than scanning every
+event, so it costs effectively nothing. Regression test:
+`test_fleet_device_lists_users_for_a_past_range` - verified to fail against the
+old code and to also assert that a quiet range does not invent users.
+
+**2. `tests/test_client.py` had nothing to connect to.** Those tests use a real
+HTTP client against the "server-testing" profile (127.0.0.1:5666), and upstream
+expects you to have started `aw-server --testing` by hand - so on a clean
+checkout they always failed with ConnectionError, taking 12 errors with them.
+`tests/conftest.py` now starts a real server on that port in a daemon thread for
+the session, and reuses an already-running one if it finds it.
+
+**3. The test server has to use the same storage as the real server.** Started
+with `AWFlask`'s default (memory), `test_get_events_interval` failed: peewee
+clips an event's duration to the queried range (`storages/peewee.py`), the
+in-memory store does not. `aw_server/config.py` sets `storage = "peewee"` for
+both profiles, so the fixture now passes peewee explicitly and the HTTP tests
+exercise what actually ships.
+
+**4. A locked testing database could abort server startup.** With two testing
+servers alive, `FleetSyncStore`/`FleetSummaryStore`'s `os.remove()` of their
+testing DB hit `PermissionError` on Windows and propagated out of
+`ServerAPI.__init__`, killing construction. Both now log and carry on. That is a
+product robustness fix, not only a test fix: an antivirus scan or a stale handle
+could do the same thing on a real machine.
+
+**5. Two dev dependencies were missing from `.venv-build`.** `pytest-benchmark`
+(3 errors) and `pytest-cov` - both declared in `pyproject.toml`, neither
+installed. Installed.
+
+Two stale assertions were also updated (they predate this round): the admin
+UI-config tests still expected the pre-landing-page shape.
+
+Running the suite:
+
+```
+.venv-build\Scripts\python.exe -m pytest tests/ -q
+```
+
+from `aw-server`. It is self-contained now - no server needs to be started
+first, and it is stable across repeated runs.
+
+## 0.13 "Eigene Zusammenfassung" - the summary page, own row only
+
+A fifth per-user page grant next to Live / Zusammenfassung / Benutzer / Geraete
+in `Administration -> Benutzer und Seiten-Zugriff`. It opens the SAME
+Zusammenfassung page, restricted to the user's own data - so someone can see
+their own active time and Redmine comparison without seeing any colleague.
+
+Grant key: `fleet-summary-own`. It is an alternative to `fleet-summary`, not an
+addition; ticking one unticks the other in the admin table, because the server
+lets the wider grant win and showing both ticked would be a lie.
+
+How the restriction is enforced - this is the part that matters:
+
+- `rest._authorize_fleet_summary_scope()` returns the username the request must
+  be limited to (or None for admins / the full grant), and the endpoints then
+  OVERWRITE the requested usernames with it. It does not reject a request that
+  names someone else, it rewrites it - so there is no way to phrase a request
+  that leaks another user, and no client bug can widen the scope.
+- Applied to `GET /0/fleet/summary`, `POST /0/fleet/redmine-comparison`,
+  `POST /0/fleet/redmine-daily-comparison` and
+  `POST /0/fleet/summary/precompute`.
+- Tested, including a deliberately regressed build to confirm the test catches
+  a leak: `test_own_summary_grant_cannot_see_other_users`,
+  `test_full_summary_grant_is_not_restricted`,
+  `test_summary_needs_one_of_the_two_grants`.
+
+Two holes were closed in passing, both found while wiring this up:
+
+- `POST /0/fleet/summary/precompute` had NO authorization beyond "logged in".
+  Any non-admin could have forced a fleet-wide recompute for arbitrary
+  usernames. It is now scoped exactly like reading.
+- `GET|POST /0/fleet/summary/precompute/config` - the server-wide nightly
+  precompute settings - were equally open, and are now admin-only. They are
+  only used by the admin-only Einstellungen page.
+
+Front end: `FleetSummary.vue` gains `ownSummaryOnly`. When set it skips
+`/0/fleet/users` entirely (that endpoint needs the `fleet-users` grant, which
+these users do not have), pins the selection to the logged-in user, hides the
+user picker, and shows "Auf dieser Seite werden nur deine eigenen Daten
+angezeigt." The route guard (`isNonAdminPathAllowed`) and the FleetNav pill
+accept either summary grant, and `fleet-summary-own` is selectable as a start
+page once granted.
+
+Note the page still shows a one-row table rather than a purpose-built personal
+view; it is the existing Zusammenfassung with everything else filtered out.
+That was deliberate - it reuses the Tagesvergleich and Redmine comparison
+as-is - but if it should look different for these users, that is a UI change on
+top, not an authorization change.
+
+## 0.14 Geraete lists offline devices too
+
+The Geraete page only ever listed devices with a session updated in the last
+two minutes, because `summarize_devices` was built from `summarize_live_state`.
+A PC that was switched off vanished from the list completely - and since the
+list is the only way into `/fleet/devices/<id>`, its entire history became
+unreachable from the UI.
+
+`summarize_devices` now enumerates every device the fleet has ever heard from.
+It reuses `_load_live_snapshots`, which already walks every watcher bucket and
+reads one latest_event each, and shares the request-scoped event cache with the
+live pass - so this is not a second trip to the datastore.
+
+Rows for devices that are not currently live get:
+
+- `status: "offline"` (the badge renders grey; "offline" added to the German
+  labels next to online/veraltet)
+- `last_seen` from the newest event across that device's buckets
+- `users` = the users last seen on it, so the row still says whose PC it is
+- `session_count: 0`
+
+This is the same root cause as the device-detail bug in section 0.11 - live
+state being used where a range was meant. Both are fixed; both have regression
+tests (`test_devices_list_includes_offline_devices` also asserts the detail
+page it links to returns real historical data).
+
+Note the Systemlast sparkline stays empty for an offline device under the
+default "Letzte 2 Stunden" range, which is correct - widen the range on the
+device page to see its history.
+
+## 0.15 Key deployment facts (unchanged)
+
+- Server installs to `C:\Program Files\ActivityWatch Fleet Server`, runs as
+  scheduled task `ActivityWatch Fleet Server`, binds `0.0.0.0:5600`, data under
+  `C:\ProgramData\ActivityWatchFleet` (movable via installer prompt /
+  `HKLM\Software\ActivityWatchFleet\DataRoot`).
+- Watchers install to `C:\Program Files\ActivityWatch Fleet Watchers`; SYSTEM
+  task `ActivityWatch Fleet Watchers Supervisor` starts per-user watchers in
+  every interactive session once a minute (plus all-users Startup shortcut
+  fallback); machine-level task `ActivityWatch Fleet System Watcher` samples
+  CPU/RAM.
+- Both installers self-elevate, prompt once, abort correctly on X-close, verify
+  watcher startup, and are headless-safe for the auto-update path.
+- Client queues are file-backed (`aw-client`), so server outages are retried.
+- Setup exes are unsigned; run as Administrator on targets. First start after
+  install can be slowed by Defender scanning fresh PyInstaller exes.
+- PyInstaller on this build machine needs the build-home env overrides (locked
+  roaming profile under `\\dc\profiles$`) - `rebuild-server-setup.ps1` sets them
+  automatically. Remove the generated `.build-home` and `aw-server/activitywatch`
+  folders afterwards if they appear.
 
 ## 1. Fork Goal
 
@@ -164,7 +631,7 @@ Main stack script:
 Useful commands:
 
 ```powershell
-Set-Location 'E:\projects\activitywatch'
+Set-Location 'C:\projecte_visual_code\activitywatch'
 powershell -ExecutionPolicy Bypass -File .\stack.ps1 start
 powershell -ExecutionPolicy Bypass -File .\stack.ps1 restart
 powershell -ExecutionPolicy Bypass -File .\stack.ps1 status
@@ -206,18 +673,18 @@ Implemented:
 
 Important files:
 
-- [aw-core/aw_core/identity.py](/E:/projects/activitywatch/aw-core/aw_core/identity.py)
-- [aw-watcher-afk/aw_watcher_afk/afk.py](/E:/projects/activitywatch/aw-watcher-afk/aw_watcher_afk/afk.py)
-- [aw-watcher-afk/aw_watcher_afk/config.py](/E:/projects/activitywatch/aw-watcher-afk/aw_watcher_afk/config.py)
-- [aw-watcher-window/aw_watcher_window/main.py](/E:/projects/activitywatch/aw-watcher-window/aw_watcher_window/main.py)
-- [aw-watcher-window/aw_watcher_window/config.py](/E:/projects/activitywatch/aw-watcher-window/aw_watcher_window/config.py)
-- [aw-watcher-window/aw_watcher_window/lib.py](/E:/projects/activitywatch/aw-watcher-window/aw_watcher_window/lib.py)
-- [aw-watcher-session/aw_watcher_session/main.py](/E:/projects/activitywatch/aw-watcher-session/aw_watcher_session/main.py)
-- [aw-watcher-session/aw_watcher_session/windows.py](/E:/projects/activitywatch/aw-watcher-session/aw_watcher_session/windows.py)
-- [aw-watcher-audio/aw_watcher_audio/main.py](/E:/projects/activitywatch/aw-watcher-audio/aw_watcher_audio/main.py)
-- [aw-watcher-audio/aw_watcher_audio/windows.py](/E:/projects/activitywatch/aw-watcher-audio/aw_watcher_audio/windows.py)
-- [aw-watcher-system/aw_watcher_system/main.py](/E:/projects/activitywatch/aw-watcher-system/aw_watcher_system/main.py)
-- [aw-watcher-system/aw_watcher_system/windows.py](/E:/projects/activitywatch/aw-watcher-system/aw_watcher_system/windows.py)
+- [aw-core/aw_core/identity.py](/C:/projecte_visual_code/activitywatch/aw-core/aw_core/identity.py)
+- [aw-watcher-afk/aw_watcher_afk/afk.py](/C:/projecte_visual_code/activitywatch/aw-watcher-afk/aw_watcher_afk/afk.py)
+- [aw-watcher-afk/aw_watcher_afk/config.py](/C:/projecte_visual_code/activitywatch/aw-watcher-afk/aw_watcher_afk/config.py)
+- [aw-watcher-window/aw_watcher_window/main.py](/C:/projecte_visual_code/activitywatch/aw-watcher-window/aw_watcher_window/main.py)
+- [aw-watcher-window/aw_watcher_window/config.py](/C:/projecte_visual_code/activitywatch/aw-watcher-window/aw_watcher_window/config.py)
+- [aw-watcher-window/aw_watcher_window/lib.py](/C:/projecte_visual_code/activitywatch/aw-watcher-window/aw_watcher_window/lib.py)
+- [aw-watcher-session/aw_watcher_session/main.py](/C:/projecte_visual_code/activitywatch/aw-watcher-session/aw_watcher_session/main.py)
+- [aw-watcher-session/aw_watcher_session/windows.py](/C:/projecte_visual_code/activitywatch/aw-watcher-session/aw_watcher_session/windows.py)
+- [aw-watcher-audio/aw_watcher_audio/main.py](/C:/projecte_visual_code/activitywatch/aw-watcher-audio/aw_watcher_audio/main.py)
+- [aw-watcher-audio/aw_watcher_audio/windows.py](/C:/projecte_visual_code/activitywatch/aw-watcher-audio/aw_watcher_audio/windows.py)
+- [aw-watcher-system/aw_watcher_system/main.py](/C:/projecte_visual_code/activitywatch/aw-watcher-system/aw_watcher_system/main.py)
+- [aw-watcher-system/aw_watcher_system/windows.py](/C:/projecte_visual_code/activitywatch/aw-watcher-system/aw_watcher_system/windows.py)
 
 Current watcher metadata model:
 
@@ -276,14 +743,14 @@ Implemented in `aw-server`:
 
 Important files:
 
-- [aw-server/aw_server/api.py](/E:/projects/activitywatch/aw-server/aw_server/api.py)
-- [aw-server/aw_server/rest.py](/E:/projects/activitywatch/aw-server/aw_server/rest.py)
-- [aw-server/aw_server/server.py](/E:/projects/activitywatch/aw-server/aw_server/server.py)
-- [aw-server/aw_server/settings.py](/E:/projects/activitywatch/aw-server/aw_server/settings.py)
-- [aw-server/aw_server/fleet.py](/E:/projects/activitywatch/aw-server/aw_server/fleet.py)
-- [aw-server/aw_server/fleet_sync.py](/E:/projects/activitywatch/aw-server/aw_server/fleet_sync.py)
-- [aw-server/aw_server/fleet_sync_store.py](/E:/projects/activitywatch/aw-server/aw_server/fleet_sync_store.py)
-- [aw-server/aw_server/bucket_backfill.py](/E:/projects/activitywatch/aw-server/aw_server/bucket_backfill.py)
+- [aw-server/aw_server/api.py](/C:/projecte_visual_code/activitywatch/aw-server/aw_server/api.py)
+- [aw-server/aw_server/rest.py](/C:/projecte_visual_code/activitywatch/aw-server/aw_server/rest.py)
+- [aw-server/aw_server/server.py](/C:/projecte_visual_code/activitywatch/aw-server/aw_server/server.py)
+- [aw-server/aw_server/settings.py](/C:/projecte_visual_code/activitywatch/aw-server/aw_server/settings.py)
+- [aw-server/aw_server/fleet.py](/C:/projecte_visual_code/activitywatch/aw-server/aw_server/fleet.py)
+- [aw-server/aw_server/fleet_sync.py](/C:/projecte_visual_code/activitywatch/aw-server/aw_server/fleet_sync.py)
+- [aw-server/aw_server/fleet_sync_store.py](/C:/projecte_visual_code/activitywatch/aw-server/aw_server/fleet_sync_store.py)
+- [aw-server/aw_server/bucket_backfill.py](/C:/projecte_visual_code/activitywatch/aw-server/aw_server/bucket_backfill.py)
 
 Implemented endpoints worth knowing:
 
@@ -314,12 +781,12 @@ There is now a partial endpoint sync component:
 
 Important files:
 
-- [aw-agent-windows/aw_agent_windows/main.py](/E:/projects/activitywatch/aw-agent-windows/aw_agent_windows/main.py)
-- [aw-agent-windows/aw_agent_windows/config.py](/E:/projects/activitywatch/aw-agent-windows/aw_agent_windows/config.py)
-- [aw-agent-windows/aw_agent_windows/identity.py](/E:/projects/activitywatch/aw-agent-windows/aw_agent_windows/identity.py)
-- [aw-agent-windows/aw_agent_windows/outbox.py](/E:/projects/activitywatch/aw-agent-windows/aw_agent_windows/outbox.py)
-- [aw-agent-windows/aw_agent_windows/sync_client.py](/E:/projects/activitywatch/aw-agent-windows/aw_agent_windows/sync_client.py)
-- [aw-agent-windows/README.md](/E:/projects/activitywatch/aw-agent-windows/README.md)
+- [aw-agent-windows/aw_agent_windows/main.py](/C:/projecte_visual_code/activitywatch/aw-agent-windows/aw_agent_windows/main.py)
+- [aw-agent-windows/aw_agent_windows/config.py](/C:/projecte_visual_code/activitywatch/aw-agent-windows/aw_agent_windows/config.py)
+- [aw-agent-windows/aw_agent_windows/identity.py](/C:/projecte_visual_code/activitywatch/aw-agent-windows/aw_agent_windows/identity.py)
+- [aw-agent-windows/aw_agent_windows/outbox.py](/C:/projecte_visual_code/activitywatch/aw-agent-windows/aw_agent_windows/outbox.py)
+- [aw-agent-windows/aw_agent_windows/sync_client.py](/C:/projecte_visual_code/activitywatch/aw-agent-windows/aw_agent_windows/sync_client.py)
+- [aw-agent-windows/README.md](/C:/projecte_visual_code/activitywatch/aw-agent-windows/README.md)
 
 Current status:
 
@@ -356,23 +823,23 @@ Implemented in `aw-webui`:
 
 Important files:
 
-- [aw-server/aw-webui/src/i18n.ts](/E:/projects/activitywatch/aw-server/aw-webui/src/i18n.ts)
-- [aw-server/aw-webui/src/views/Login.vue](/E:/projects/activitywatch/aw-server/aw-webui/src/views/Login.vue)
-- [aw-server/aw-webui/src/stores/auth.ts](/E:/projects/activitywatch/aw-server/aw-webui/src/stores/auth.ts)
-- [aw-server/aw-webui/src/stores/adminUi.ts](/E:/projects/activitywatch/aw-server/aw-webui/src/stores/adminUi.ts)
-- [aw-server/aw-webui/src/stores/fleet.ts](/E:/projects/activitywatch/aw-server/aw-webui/src/stores/fleet.ts)
-- [aw-server/aw-webui/src/util/bucketIdentity.ts](/E:/projects/activitywatch/aw-server/aw-webui/src/util/bucketIdentity.ts)
-- [aw-server/aw-webui/src/views/Timeline.vue](/E:/projects/activitywatch/aw-server/aw-webui/src/views/Timeline.vue)
-- [aw-server/aw-webui/src/visualizations/VisTimeline.vue](/E:/projects/activitywatch/aw-server/aw-webui/src/visualizations/VisTimeline.vue)
-- [aw-server/aw-webui/src/views/Bucket.vue](/E:/projects/activitywatch/aw-server/aw-webui/src/views/Bucket.vue)
-- [aw-server/aw-webui/src/views/Buckets.vue](/E:/projects/activitywatch/aw-server/aw-webui/src/views/Buckets.vue)
-- [aw-server/aw-webui/src/views/fleet/FleetOverview.vue](/E:/projects/activitywatch/aw-server/aw-webui/src/views/fleet/FleetOverview.vue)
-- [aw-server/aw-webui/src/views/fleet/FleetUsers.vue](/E:/projects/activitywatch/aw-server/aw-webui/src/views/fleet/FleetUsers.vue)
-- [aw-server/aw-webui/src/views/fleet/FleetUser.vue](/E:/projects/activitywatch/aw-server/aw-webui/src/views/fleet/FleetUser.vue)
-- [aw-server/aw-webui/src/views/fleet/FleetDevices.vue](/E:/projects/activitywatch/aw-server/aw-webui/src/views/fleet/FleetDevices.vue)
-- [aw-server/aw-webui/src/views/fleet/FleetDevice.vue](/E:/projects/activitywatch/aw-server/aw-webui/src/views/fleet/FleetDevice.vue)
-- [aw-server/aw-webui/src/components/Header.vue](/E:/projects/activitywatch/aw-server/aw-webui/src/components/Header.vue)
-- [aw-server/aw-webui/src/route.js](/E:/projects/activitywatch/aw-server/aw-webui/src/route.js)
+- [aw-server/aw-webui/src/i18n.ts](/C:/projecte_visual_code/activitywatch/aw-server/aw-webui/src/i18n.ts)
+- [aw-server/aw-webui/src/views/Login.vue](/C:/projecte_visual_code/activitywatch/aw-server/aw-webui/src/views/Login.vue)
+- [aw-server/aw-webui/src/stores/auth.ts](/C:/projecte_visual_code/activitywatch/aw-server/aw-webui/src/stores/auth.ts)
+- [aw-server/aw-webui/src/stores/adminUi.ts](/C:/projecte_visual_code/activitywatch/aw-server/aw-webui/src/stores/adminUi.ts)
+- [aw-server/aw-webui/src/stores/fleet.ts](/C:/projecte_visual_code/activitywatch/aw-server/aw-webui/src/stores/fleet.ts)
+- [aw-server/aw-webui/src/util/bucketIdentity.ts](/C:/projecte_visual_code/activitywatch/aw-server/aw-webui/src/util/bucketIdentity.ts)
+- [aw-server/aw-webui/src/views/Timeline.vue](/C:/projecte_visual_code/activitywatch/aw-server/aw-webui/src/views/Timeline.vue)
+- [aw-server/aw-webui/src/visualizations/VisTimeline.vue](/C:/projecte_visual_code/activitywatch/aw-server/aw-webui/src/visualizations/VisTimeline.vue)
+- [aw-server/aw-webui/src/views/Bucket.vue](/C:/projecte_visual_code/activitywatch/aw-server/aw-webui/src/views/Bucket.vue)
+- [aw-server/aw-webui/src/views/Buckets.vue](/C:/projecte_visual_code/activitywatch/aw-server/aw-webui/src/views/Buckets.vue)
+- [aw-server/aw-webui/src/views/fleet/FleetOverview.vue](/C:/projecte_visual_code/activitywatch/aw-server/aw-webui/src/views/fleet/FleetOverview.vue)
+- [aw-server/aw-webui/src/views/fleet/FleetUsers.vue](/C:/projecte_visual_code/activitywatch/aw-server/aw-webui/src/views/fleet/FleetUsers.vue)
+- [aw-server/aw-webui/src/views/fleet/FleetUser.vue](/C:/projecte_visual_code/activitywatch/aw-server/aw-webui/src/views/fleet/FleetUser.vue)
+- [aw-server/aw-webui/src/views/fleet/FleetDevices.vue](/C:/projecte_visual_code/activitywatch/aw-server/aw-webui/src/views/fleet/FleetDevices.vue)
+- [aw-server/aw-webui/src/views/fleet/FleetDevice.vue](/C:/projecte_visual_code/activitywatch/aw-server/aw-webui/src/views/fleet/FleetDevice.vue)
+- [aw-server/aw-webui/src/components/Header.vue](/C:/projecte_visual_code/activitywatch/aw-server/aw-webui/src/components/Header.vue)
+- [aw-server/aw-webui/src/route.js](/C:/projecte_visual_code/activitywatch/aw-server/aw-webui/src/route.js)
 
 Current timeline behavior:
 
@@ -387,72 +854,52 @@ Current timeline behavior:
 
 ## 4. Current Functional Direction
 
-The fork currently mixes two worlds:
+RESOLVED 2026-08-25 - see section 0.5.
 
-1. new session-aware / user-aware fleet functionality
-2. old upstream host-centric ActivityWatch functionality
+The fork used to mix two worlds: the new session-aware / user-aware fleet
+functionality, and the old upstream host-centric ActivityWatch views (`Activity`,
+`Report`, `Search`, `Graph`, `Trends`, `Alerts`, `Timespiral`, the Query
+explorer). The old views were unlinked from the navigation on 2026-08-24 and
+their routes were removed on 2026-08-25, so they are no longer reachable at all
+and their code is no longer bundled.
 
-The new work is already most visible in:
-
-- fleet pages
-- timeline
-- bucket detail/list screens
-
-The old host-centric model still dominates in several legacy views:
-
-- `Activity`
-- `Report`
-- `Search`
-- `Graph`
-- some older query components
-
-This is the biggest architectural gap left in the UI.
+What remains is one genuine host-centric leftover, not a whole world: the shared
+query components under `src/queries.ts` and `components/QueryOptions.vue` still
+carry per-host assumptions. `QueryOptions.vue` is now only used by
+`settings/CategoryBuilder.vue`, so the blast radius is small.
 
 
 ## 5. Known Issues / Incomplete Areas
 
-### 5.1 Full GUI is not yet fully session-first
+### 5.1 GUI is session-first now; query helpers are the leftover
 
-Most important remaining gap:
+RESOLVED for the views - see section 0.5. Fleet views, timeline and bucket
+identity handling are session-aware and user-aware, and every host-centric view
+is gone.
 
-- the whole GUI is not yet consistently treated per session and per user
+Still carrying per-host assumptions:
 
-What is already adapted:
-
-- fleet views
-- timeline
-- bucket identity handling
-
-What is still mostly legacy:
-
-- host-based activity views
-- report/search/graph paths
-- some older bucket grouping assumptions in stores and query code
+- `src/queries.ts` and `components/QueryOptions.vue` (used only by the category
+  builder)
+- some older bucket grouping helpers in the stores
 
 
 ### 5.2 `aw-agent-windows` is incomplete
 
-Current state:
-
-- sync outbox and wire protocol exist
-- local datastore scan into outbox is still missing
-
-This means:
-
-- direct central-mode watcher upload works
-- durable offline sync from endpoint-local data is not finished end-to-end
+Unchanged, and now explained in full in section 0.6 - what it is for, what
+exists, what is missing (the local bucket scan into the outbox; those enqueue
+functions have zero call sites), whether it is redundant given the aw-client
+queue, and what finishing it would actually cost. Short version: the receiving
+half is complete and tested, the sending half is a no-op, and the expensive part
+is not the code but rolling out a local aw-server to every device.
 
 
-### 5.3 Session type mismatch can still happen
+### 5.3 Session type mismatch
 
-Observed nuance:
-
-- `aw-watcher-session` can report exact Windows session type such as `console`
-- AFK/window identity currently may still say `interactive`
-
-This is not fatal, but if the UI needs a single authoritative session label, it should prefer the session watcher.
-
-
+RESOLVED 2026-08-25 - see section 0.4. There is now one canonical vocabulary
+(`console` / `rdp` / `virtual` / `machine` / `unknown`), every watcher detects
+the real Windows session type through the same helper, and the server normalizes
+on read so existing history renders consistently without a migration.
 ### 5.4 Stopwatch is legacy for this fork
 
 Current intent:
@@ -482,6 +929,37 @@ What is not implemented:
 - role hierarchy beyond admin flag
 
 
+### 5.6 Deployed binaries lag the repo
+
+The repo regularly runs ahead of the deployed exes (see section 0). Before debugging a "missing feature", check the deployed setup hashes first — that has repeatedly masqueraded as a code bug. (The other suspect this section used to name, a PWA service worker, does not exist: see the note in section 0. Browser caching is still worth a Ctrl+F5, but there is no service worker to unregister.)
+
+### 5.7 settings.json robustness
+
+RESOLVED 2026-08-25 - see section 0.2. `save()` is now temp file + fsync +
+`os.replace` with a `.bak` generation, `load()` recovers from that backup and
+quarantines an unusable file instead of overwriting it, and every mutator runs
+under a re-entrant lock.
+
+Still open, operationally rather than in code: nothing automates a daily backup
+of `C:\ProgramData\ActivityWatchFleet`. The `.bak` protects against the last bad
+write, not against a bad admin edit or a disk failure.
+
+### 5.8 API authentication
+
+REWORKED 2026-08-25 - see section 0.3. The claim this section used to make ("most
+`/api/0/fleet/*` GET endpoints require no login") was stale: the global
+`_enforce_api_auth` gate has required a session since April 2026. What was
+genuinely open was machine traffic, and the watcher-update routes were
+accidentally NOT in the allowlist, so the supervisor was being 401'd.
+
+Now: browser endpoints need a login (local or LDAP); machine endpoints
+(watcher ingest, watcher update, fleet sync) authenticate with the fleet token;
+the token unlocks nothing else. Token enforcement ships OFF and must be switched
+on only after every device has been given the token.
+
+Remaining known gap: the watcher-update payload is SHA256-verified against the
+server manifest but not signed, so the server (by IP) is still trusted.
+
 ## 6. Important Decisions Already Made
 
 - Privacy is not treated as a blocker for this fork.
@@ -496,15 +974,33 @@ What is not implemented:
 
 If a new chat needs a concrete next slice, the highest-value order is:
 
-1. Finish making the remaining legacy web UI views session-aware and user-aware.
-2. Complete `aw-agent-windows` local bucket scan -> outbox -> fleet sync flow.
-3. Normalize session identity and session type across AFK/window/session watchers.
-4. Add tests around:
+1. DEPLOY. Install the freshly built server setup on LS, then run the watcher
+   setup once per device (section 0). Verify on ONE device first: that it shows
+   up under Administration -> Watcher-Updates with a reported version, that
+   ticking its checkbox and pressing "Jetzt aktualisieren" installs within a
+   minute, and only then enable auto-update fleet-wide.
+2. Decide on token enforcement. Provision `-FleetToken` during the per-device
+   pass, then flip "Token verlangen" in Administration. Until that switch is on,
+   anyone on the LAN can still POST watcher-style events (reads are already
+   locked down).
+3. Add a nightly backup task for `C:\ProgramData\ActivityWatchFleet`. The code
+   side of the settings corruption risk is fixed (section 0.2); the operational
+   side is not.
+4. DONE this round - the test suite is green (section 0.11), including a
+   real bug it turned out to be hiding. Keep it that way: it is now
+   self-contained, so a red run means something actually broke.
+
+5. Decide about `aw-agent-windows` (section 0.6): finish the local bucket scan
+   and the local-aw-server rollout, or write it off explicitly in the README so
+   it stops reading as working infrastructure. Do not leave it half-finished.
+6. Retire the per-host assumptions left in `src/queries.ts` and
+   `components/QueryOptions.vue` (now only used by the category builder).
+7. Add tests around:
    - bucket identity backfill
    - timeline per-session watcher filtering
    - user/device aggregated report correctness
-   - sync conflict/recovery behavior
-5. Add more explicit fleet UI drilldowns where needed:
+   - sync conflict/recovery behaviour
+8. Add more explicit fleet UI drilldowns where needed:
    - selected users + selected devices + date range
    - per-session filters
    - app summary across selected PCs
@@ -517,30 +1013,70 @@ Use something like:
 ```text
 Read ACTIVITYWATCH_HANDOFF.md and continue this ActivityWatch fork.
 
-This fork is intended to become a centralized Windows multi-user work-tracking system.
-Priority: make the remaining GUI consistently session-aware and user-aware, then continue the endpoint sync path in aw-agent-windows.
+This fork is a centralized Windows multi-user work-tracking system.
+Start with section 0: the current build is packaged but NOT yet installed on LS
+or on the devices. Deploy first, verify the manual watcher update on one device,
+then pick up the next item from section 7.
 
 Before changing code, inspect the current implementations in:
-- aw-server/aw_server/fleet.py
-- aw-server/aw_server/fleet_sync.py
-- aw-server/aw_server/bucket_backfill.py
-- aw-server/aw-webui/src/views/Timeline.vue
-- aw-server/aw-webui/src/util/bucketIdentity.ts
-- aw-agent-windows/aw_agent_windows/*
-- aw-watcher-session/*
+- aw-server/aw_server/server.py      (the API auth gate: public / machine / session)
+- aw-server/aw_server/settings.py    (atomic save, fleet token, update requests)
+- aw-server/aw_server/fleet.py       (identity + session type normalization on read)
+- aw-core/aw_core/identity.py        (canonical session vocabulary, detection)
+- deploy/windows/watchers/supervise-watchers.ps1  (manual update pickup)
+- aw-server/aw-webui/src/views/settings/WatcherUpdateSettings.vue
+- aw-agent-windows/aw_agent_windows/*  (parked - read section 0.6 first)
 ```
-
 
 ## 9. Roadmap Reference
 
 The original detailed implementation roadmap is in:
 
-- [roadmap.md](/E:/projects/activitywatch/roadmap.md)
+- [roadmap.md](/C:/projecte_visual_code/activitywatch/roadmap.md)
 
 That roadmap still reflects the intended direction well, but this handoff is the more accurate picture of current implementation state.
 
 
 ## 10. Latest Local Work Notes
+
+### 2026-08-25 — Per-user page permissions, non-admin lockdown, wide settings
+
+- Non-admin lockdown is now a WHITELIST (route guard `isNonAdminPathAllowed`): a non-admin can open ONLY their own single-user view (`/fleet/users/<own name>` + subpaths) plus fleet pages explicitly granted to them — every other route, fleet or legacy (`/settings`, `/buckets`, `/search`, ...), typed URL included, redirects to their start page.
+- Per-user page grants: `settings.py` auth-user records got `allowed_pages` (subset of `fleet-live`, `fleet-summary`, `fleet-users`, `fleet-devices`) and `landing_page` (`own` or a granted page key; auto-clamped when a grant is revoked). Preserved across LDAP logins (`_record_ldap_login` spreads the existing record). Session payload (`/0/auth/session`) now carries both; `POST /0/admin/auth/users/<u>` accepts `allowed_pages`/`landing_page` alongside `is_admin` (built-in admin only).
+- Server-side backing: `_authorize_fleet_page(page, target_username)` in rest.py — a logged-in non-admin gets 403 on fleet endpoints for pages not granted (live/storage→fleet-live, users list + FOREIGN user detail/progress/activity/recalculate→fleet-users, summary + Redmine comparisons→fleet-summary, devices list/detail→fleet-devices). Own-user endpoints always pass. Device METRICS stay session-open because the own view renders the Systemlast wave. Sessions-less LAN calls (watchers, tooling) keep the documented open behavior.
+- Admin UI: the user table moved BELOW the LDAP/Test panels (full width) in `AdminAuthSettings.vue` and gained per-row "Seiten-Zugriff" checkboxes (Live/Zusammenfassung/Benutzer/Geräte) and a "Startseite" select (Eigene Auswertung (Standard) + granted pages only, per the request that permitted pages become pickable). Admin rows show "Alle Seiten"/-.
+- Start page resolution (`resolveLandingPage` now takes the auth store): non-admins → per-user override if granted, else own view; the global "Startseite (Benutzer)" option remains only "Meine Auswertung". FleetNav shows non-admins "Meine Auswertung" plus pills for granted pages; the FleetUser user-switcher appears for admins or `fleet-users` grantees.
+- `/settings` and `/admin` routes got `meta.fullContainer` — wide-screen layout like the fleet views.
+- Follow-up in the same round: the user table now lives on the ADMINISTRATION page (`UserAccessSettings.vue`, shown to the built-in admin only, above Redmine-Benutzerzuordnung); `AdminAuthSettings.vue` in Einstellungen keeps just the LDAP connection + test panels.
+- Follow-up 2: the global "Startseite" section was REMOVED from Einstellungen (`LandingPageSettings.vue` is orphaned, no longer imported). Start pages are now purely per-user in the Benutzer und Seiten-Zugriff table — admin rows too: options Live (Standard, clears override), Meine Auswertung, Zusammenfassung, Benutzer, Geräte, Zeitachse, Rohdaten (`landing_page` keys incl. `timeline`/`buckets`, admins skip the grant clamp; demotion re-clamps). The old global `landingPageAdmin` value remains only as a silent fallback. Also fixed: LOCAL logins (built-in `admin`) now stamp `last_login` — previously only LDAP logins did, so admin always showed '-'.
+- Touched: settings.py, api.py, rest.py, auth.ts, landingPage.ts, route.js, Header.vue, FleetNav.vue, FleetUser.vue, AdminAuthSettings.vue, i18n.ts. Requires webui rebuild + server repackage.
+
+
+### 2026-08-25 — Watcher package upload via GUI (distribute without server rebuild)
+
+- The Watcher-Updates panel (Administration) now has an upload form: drop in `dist/deployment/ActivityWatch-Fleet-Watchers-Update.zip` (new build-setup.ps1 output bundling payload.zip + install-watchers.ps1 + manifest.json; a bare `payload.zip` is also accepted) and the server distributes it immediately — no server rebuild/reinstall when only the watchers changed.
+- Two package locations, uploaded ALWAYS wins until removed: embedded (`aw_server/watcher_package`, read-only, baked by rebuild-server-setup) and uploaded (`<aw-server data dir>/watcher_package_uploaded`, survives server reinstalls). The GUI shows the active source (Hochgeladen/Eingebettet), a remove-override button (falls back to embedded, with confirm), and a warning when the embedded package is newer than the uploaded one (e.g. after a later server rebuild) so a stale override cannot silently downgrade the fleet.
+- Server recomputes version/sha256 from the uploaded payload.zip and writes its own manifest — uploaded manifests are never trusted. Upload validation: zip classification (wrapper vs bare payload via entry names), payload must contain `aw-watcher-*` folders, installer fallback from the previously active package when the upload has none. Atomic-ish swap via tmp dir + rename, one retry for Windows file-lock races; tmp dirs always cleaned.
+- New endpoints: `POST /api/0/fleet/watcher-update/upload` (admin, multipart field `file`) and `DELETE` same path (admin, removes override). Supervisors are untouched — they keep polling the manifest, which now resolves uploaded-over-embedded transparently (extra `source`/`uploaded`/`embedded` keys are GUI detail).
+- Quick rollout when only watchers changed: `rebuild-watchers-setup.cmd` → upload `ActivityWatch-Fleet-Watchers-Update.zip` in the GUI → done. Full chain (watchers rebuild → server rebuild → server install) is only needed when the server itself changed.
+- Touched: api.py, rest.py, WatcherUpdateSettings.vue, fleet.ts, i18n.ts, build-setup.ps1.
+
+
+### 2026-08-25 — Watcher auto-update from the admin web GUI
+
+- Fleet devices now update their watchers themselves: the SYSTEM supervisor task checks the server about once a minute, and when the server carries a different watcher package and auto-update is enabled, it downloads, SHA256-verifies, and installs it headlessly. No more walking installers to every PC.
+- Package identity: version = SHA256 of the watcher `payload.zip` (lowercase). `build-setup.ps1 -Target Watchers` writes `dist/deployment/watchers-iexpress/manifest.json` `{version, sha256, created}`; `install-watchers.ps1` stamps the installed version into `<InstallDir>\package-version.txt` after extraction.
+- Server embeds the package: `rebuild-server-setup.ps1` gained step 4/6, which copies `payload.zip` + `install-watchers.ps1` + `manifest.json` from `dist/deployment/watchers-iexpress/` into `aw-server/aw_server/watcher_package/` before PyInstaller; `aw-server.spec` bundles that folder (optional — the server still builds without it and reports "no package"). The folder is gitignored.
+- BUILD ORDER for a full rollout: `rebuild-watchers-setup.cmd` FIRST (produces the new watcher package), then `rebuild-server-setup.cmd` (embeds it), then install the new server setup on LS once. From then on the fleet pulls the update itself.
+- New endpoints (rest.py): unauthenticated like watcher traffic — `GET /api/0/fleet/watcher-update/manifest` (includes `auto_update_enabled`), `GET .../payload`, `GET .../installer`, `POST .../status` (per-device version report). Admin-only: `GET .../devices` (merged per-device report incl. fleet devices that never reported), `GET/POST .../config` (`auto_update_enabled`, default OFF).
+- settings.py: `_watcher_update_config` + `_watcher_update_status` reserved keys; per-device status writes to disk only when version/message/updating changes (reports come once a minute per device).
+- supervise-watchers.ps1: new `-ServerBase` param (IP/port baked by `build-setup.ps1` like the start scripts) and `Invoke-WatcherUpdateCheck`, which runs AFTER session launching so update trouble can never block watcher starts. 15-minute per-version cooldown via `%ProgramData%\ActivityWatchFleet\update\state.json` prevents retry loops; downloads land in `update\<version>\`; the installer is spawned DETACHED (`-Headless -KeepExistingSelection -InstallDir ...`) because it replaces the supervisor's own files.
+- install-watchers.ps1 is now headless-safe (this also fixed the file's mixed CRLF/LF endings — normalized to CRLF): new `-Headless` + `-KeepExistingSelection` switches, auto-detects non-interactive sessions, never prompts/dialogs/UAC when headless, keeps the machine's existing watcher selection (`watchers.config.psd1`, fallback all), and transcribes to `%ProgramData%\ActivityWatchFleet\logs\install-watchers.log`. Interactive installs are unchanged.
+- Admin GUI: `/admin` page (user-dropdown → "Administration", admins only) now hosts Redmine-Benutzerzuordnung plus the new Watcher-Updates panel: embedded package version/date/size, the auto-update switch, and a per-device table (gemeldete Version, Aktuell/Veraltet/Aktualisiert gerade/Nie gemeldet, letzte Meldung, Statusmeldung) that auto-refreshes every 30 s.
+- IMPORTANT repair: `views/admin/AdminView.vue` was missing on disk while `route.js` still imported it — `npm run build` would have failed. The file is restored (with the new panel).
+- Rollout note: devices running the pre-auto-update supervisor never report and show "Nie gemeldet" — run the watcher installer there once by hand; every later update then comes from the GUI. Auto-update ships DISABLED; flip the switch in /admin after the new server is live.
+- Touched: install-watchers.ps1, supervise-watchers.ps1, build-setup.ps1, rebuild-server-setup.ps1, aw-server.spec, settings.py, api.py, rest.py, AdminView.vue (restored), WatcherUpdateSettings.vue (new), fleet.ts, Header.vue, i18n.ts, .gitignore.
+
 
 ### 2026-08-24 web UI chrome cleanup (footer links, Activity menu, Tools menu)
 

@@ -44,7 +44,8 @@ if ($Target -eq "All" -and (Test-Path $distRoot)) {
             $watchersPayload,
             $watchersIexpress,
             $watchersSetup,
-            (Join-Path $distRoot "watchers-setup.sed")
+            (Join-Path $distRoot "watchers-setup.sed"),
+            (Join-Path $distRoot "ActivityWatch-Fleet-Watchers-Update.zip")
         )
     }
     foreach ($path in $pathsToRemove) {
@@ -103,6 +104,7 @@ if ($buildWatchers) {
     Copy-Item -Path (Join-Path $PSScriptRoot "watchers\start-system-watcher.ps1") -Destination $watchersPayload -Force
     Copy-Item -Path (Join-Path $PSScriptRoot "watchers\stop-watchers.ps1") -Destination $watchersPayload -Force
     Copy-Item -Path (Join-Path $PSScriptRoot "watchers\uninstall-watchers.ps1") -Destination $watchersPayload -Force
+    Copy-Item -Path (Join-Path $PSScriptRoot "watchers\set-fleet-token.ps1") -Destination $watchersPayload -Force
 }
 
 function Update-DeploymentScriptDefaults {
@@ -124,6 +126,8 @@ if ($buildServer) {
 if ($buildWatchers) {
     Update-DeploymentScriptDefaults -Path (Join-Path $watchersPayload "start-watchers.ps1")
     Update-DeploymentScriptDefaults -Path (Join-Path $watchersPayload "start-system-watcher.ps1")
+    Update-DeploymentScriptDefaults -Path (Join-Path $watchersPayload "supervise-watchers.ps1")
+    Update-DeploymentScriptDefaults -Path (Join-Path $watchersPayload "set-fleet-token.ps1")
 }
 
 if ($buildServer) {
@@ -136,6 +140,30 @@ if ($buildWatchers) {
     Compress-Archive -Path (Join-Path $watchersPayload "*") -DestinationPath (Join-Path $watchersIexpress "payload.zip") -Force
     Copy-Item -Path (Join-Path $PSScriptRoot "watchers\install-watchers.ps1") -Destination $watchersIexpress -Force
     Update-DeploymentScriptDefaults -Path (Join-Path $watchersIexpress "install-watchers.ps1")
+
+    # Auto-update manifest: the package version IS the SHA256 of payload.zip.
+    # rebuild-server-setup.ps1 embeds payload.zip + install-watchers.ps1 +
+    # manifest.json into the server, which then serves them to the supervisors.
+    $watchersPayloadZip = Join-Path $watchersIexpress "payload.zip"
+    $watchersPackageVersion = (Get-FileHash -Algorithm SHA256 -LiteralPath $watchersPayloadZip).Hash.ToLowerInvariant()
+    $watchersManifest = @{
+        version = $watchersPackageVersion
+        sha256 = $watchersPackageVersion
+        created = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+    } | ConvertTo-Json
+    Set-Content -Path (Join-Path $watchersIexpress "manifest.json") -Value $watchersManifest -Encoding ASCII
+    Write-Host "Watcher package version: $watchersPackageVersion"
+
+    # Single-file update package for the admin GUI: upload this under
+    # Administration -> Watcher-Updates to distribute the new watchers
+    # WITHOUT rebuilding or reinstalling the server.
+    $watchersUpdateZip = Join-Path $distRoot "ActivityWatch-Fleet-Watchers-Update.zip"
+    Compress-Archive -Path @(
+        (Join-Path $watchersIexpress "payload.zip"),
+        (Join-Path $watchersIexpress "install-watchers.ps1"),
+        (Join-Path $watchersIexpress "manifest.json")
+    ) -DestinationPath $watchersUpdateZip -Force
+    Write-Host "Created $watchersUpdateZip (upload this in the admin GUI under Watcher-Updates)"
 }
 
 function New-IExpressSed {
@@ -177,7 +205,7 @@ SourceFiles=SourceFiles
 [Strings]
 InstallPrompt=
 DisplayLicense=
-FinishMessage=Installed.
+FinishMessage=
 TargetName=$TargetName
 FriendlyName=$FriendlyName
 AppLaunched=$installerPowerShell -NoProfile -ExecutionPolicy Bypass -File $InstallScript
@@ -198,7 +226,13 @@ SourceFiles0=$SourceDir
 function Wait-ForFile {
     param(
         [string]$Path,
-        [int]$TimeoutSeconds = 120
+        # iexpress.exe is launched with /N /Q and returns immediately, so the
+        # only way to know it finished is to poll for the output. Compressing
+        # the ~65 MB server payload regularly needs well over two minutes on a
+        # loaded build machine (Defender scanning the fresh PyInstaller dist
+        # makes it worse), and a timeout here is destructive: the previous
+        # setup exe has already been cleared by then.
+        [int]$TimeoutSeconds = 900
     )
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
@@ -215,7 +249,9 @@ function Wait-ForFile {
 function Wait-ForStableFile {
     param(
         [string]$Path,
-        [int]$TimeoutSeconds = 60
+        # The exe appears before it is fully written; wait for the size to stop
+        # growing. Same reasoning as Wait-ForFile for the generous timeout.
+        [int]$TimeoutSeconds = 300
     )
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
@@ -277,6 +313,21 @@ function Complete-IExpressOutput {
 
 $iexpress = (Get-Command iexpress.exe -ErrorAction Stop).Source
 
+function Invoke-IExpress {
+    # iexpress.exe is a GUI-subsystem binary, so `& $iexpress` returns as soon
+    # as it is launched instead of when it is done. The build then raced the
+    # packager by polling for the output file, which is unreliable: on a loaded
+    # machine the ~65 MB server payload finished the CAB but not the exe, and
+    # the poll gave up - after the previous setup exe had already been cleared,
+    # leaving no artefact at all. Start-Process -Wait actually waits.
+    param([string]$SedPath)
+
+    $process = Start-Process -FilePath $iexpress -ArgumentList @("/N", "/Q", $SedPath) -Wait -PassThru
+    if ($process.ExitCode -ne 0) {
+        throw "iexpress failed with exit code $($process.ExitCode) for $SedPath"
+    }
+}
+
 if ($buildServer) {
     New-IExpressSed `
         -SourceDir $serverIexpress `
@@ -285,7 +336,7 @@ if ($buildServer) {
         -InstallScript "install-server.ps1" `
         -SedPath (Join-Path $distRoot "server-setup.sed")
 
-    & $iexpress /N /Q (Join-Path $distRoot "server-setup.sed")
+    Invoke-IExpress -SedPath (Join-Path $distRoot "server-setup.sed")
     Complete-IExpressOutput -Path $serverSetup
     Write-Host "Created $serverSetup"
 }
@@ -298,7 +349,7 @@ if ($buildWatchers) {
         -InstallScript "install-watchers.ps1" `
         -SedPath (Join-Path $distRoot "watchers-setup.sed")
 
-    & $iexpress /N /Q (Join-Path $distRoot "watchers-setup.sed")
+    Invoke-IExpress -SedPath (Join-Path $distRoot "watchers-setup.sed")
     Complete-IExpressOutput -Path $watchersSetup
     Write-Host "Created $watchersSetup"
     Write-Host "Watchers are preconfigured for http://$($ServerHost):$ServerPort/"

@@ -2,14 +2,48 @@ param(
     [string]$InstallDir = (Join-Path ${env:ProgramFiles} "ActivityWatch Fleet Watchers"),
     [string[]]$Watchers,
     [switch]$SkipWatcherSelection,
+    [switch]$KeepExistingSelection,
     [switch]$SkipStartup,
     [switch]$SkipSystemTask,
     [switch]$NoStart,
-    [int]$StartupTimeoutSeconds = 60,
-    [switch]$AllowNonAdmin
+    [int]$StartupTimeoutSeconds = 120,
+    [switch]$AllowNonAdmin,
+    [switch]$Headless,
+    # Shared secret this device uses to authenticate against the fleet server
+    # (Administration -> Watcher-Updates -> Fleet-Token). Written once per
+    # machine; every watcher and the supervisor read it from there. Omit it on
+    # an upgrade to keep whatever token is already provisioned.
+    [string]$FleetToken = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+# Headless mode: used by the watcher auto-update (supervisor spawns this script
+# as SYSTEM with no interactive console). Never prompt, never show dialogs, and
+# log everything to a transcript instead of pausing.
+$IsHeadless = [bool]$Headless -or (-not [Environment]::UserInteractive)
+if ($IsHeadless) {
+    $ProgressPreference = "SilentlyContinue"
+    $ConfirmPreference = "None"
+    $headlessLogDir = Join-Path $env:ProgramData "ActivityWatchFleet\logs"
+    try {
+        New-Item -ItemType Directory -Force -Path $headlessLogDir | Out-Null
+        Start-Transcript -Path (Join-Path $headlessLogDir "install-watchers.log") -Append | Out-Null
+    } catch { }
+    Write-Host ""
+    Write-Host ("=== Headless watcher install started {0} ===" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"))
+}
+
+trap {
+    Write-Host ""
+    Write-Host "INSTALLATION FAILED: $_" -ForegroundColor Red
+    if ($IsHeadless) {
+        try { Stop-Transcript | Out-Null } catch { }
+    } else {
+        Read-Host "Press Enter to close this window" | Out-Null
+    }
+    exit 1
+}
 
 $WatcherConfigFileName = "watchers.config.psd1"
 $WatcherDefinitions = @(
@@ -79,7 +113,7 @@ function Invoke-SelfElevation {
 
     $scriptPath = $PSCommandPath
 
-    $inner = "& '$scriptPath' $($argList -join ' '); `$code = `$LASTEXITCODE; if (`$null -eq `$code) { `$code = 0 }; Write-Host ''; Read-Host 'Finished. Press Enter to close this window' | Out-Null; exit `$code"
+    $inner = "& '$scriptPath' $($argList -join ' '); `$code = `$LASTEXITCODE; if (`$null -eq `$code) { `$code = 0 }; exit `$code"
     $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($inner))
 
     Write-Host "Administrator rights are required. Requesting elevation..."
@@ -140,6 +174,27 @@ function Resolve-WatcherSelection {
     }
 
     return @($WatcherDefinitions | Where-Object { $normalized -contains $_.Key } | ForEach-Object { $_.Key })
+}
+
+function Get-ExistingWatcherSelection {
+    param([string]$InstallDir)
+
+    $configPath = Join-Path $InstallDir $WatcherConfigFileName
+    if (-not (Test-Path $configPath)) {
+        return $null
+    }
+
+    try {
+        $config = Import-PowerShellDataFile -Path $configPath
+        $selected = @($config.SelectedWatchers | Where-Object { $_ })
+        if ($selected.Count -eq 0) {
+            return $null
+        }
+        return Resolve-WatcherSelection -SelectedWatchers $selected
+    } catch {
+        Write-Warning "Could not read existing watcher selection: $($_.Exception.Message)"
+        return $null
+    }
 }
 
 function Select-WatchersWithDialog {
@@ -292,6 +347,39 @@ function Remove-WatcherStartupShortcut {
     }
 }
 
+function Write-FleetToken {
+    <#
+      Provision the machine-wide fleet token. It lives outside the install dir
+      so an update (which wipes and re-extracts the install dir) cannot lose
+      it, and so every per-user watcher plus the SYSTEM supervisor read the
+      same value. Omitting -FleetToken on an upgrade keeps the existing token.
+    #>
+    param([string]$Token)
+
+    $tokenDir = Join-Path $env:ProgramData "ActivityWatchFleet"
+    $tokenFile = Join-Path $tokenDir "fleet-token.txt"
+
+    if ([string]::IsNullOrWhiteSpace($Token)) {
+        if (Test-Path $tokenFile) {
+            Write-Host "Fleet token: keeping the token already provisioned on this device."
+        } else {
+            Write-Host "Fleet token: none provisioned. Fine while the server has token enforcement off; re-run with -FleetToken before switching it on."
+        }
+        return
+    }
+
+    New-Item -ItemType Directory -Force -Path $tokenDir | Out-Null
+    Set-Content -Path $tokenFile -Encoding ASCII -Value $Token.Trim() -NoNewline
+
+    # Readable by every logged-in user's watchers, writable only by admins.
+    try {
+        & icacls.exe $tokenFile /inheritance:r /grant:r "*S-1-5-32-544:(F)" "*S-1-5-18:(F)" "*S-1-5-32-545:(R)" | Out-Null
+    } catch {
+        Write-Warning "Could not tighten permissions on $tokenFile : $_"
+    }
+    Write-Host "Fleet token written to $tokenFile"
+}
+
 function Register-WatcherSupervisorTask {
     param([string]$InstallDir)
 
@@ -398,11 +486,32 @@ function Start-SelectedWatchers {
         return
     }
 
-    Write-Host "Waiting for watchers to start (timeout $TimeoutSeconds s)..."
+    # The installer runs inside an interactive session, so start the per-user
+    # watchers directly FIRST - deterministic and instant. The SYSTEM
+    # supervisor task remains responsible for boot time and self-healing.
+    $installerSessionId = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").SessionId
+    if ($installerSessionId -ne 0) {
+        $startScript = Join-Path $InstallDir "start-watchers.ps1"
+        if (Test-Path $startScript) {
+            Write-Host "Starting watchers directly in session $installerSessionId..."
+            $powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+            try {
+                & $powershell -NoProfile -ExecutionPolicy Bypass -File $startScript 2>&1 |
+                    ForEach-Object { Write-Host "  $_" }
+            } catch {
+                Write-Warning "Direct watcher start failed: $($_.Exception.Message)"
+            }
+        }
+    }
+
+    Write-Host "Verifying watchers (timeout $TimeoutSeconds s)..."
+    Write-Host "(If this console appears frozen, a click selected text - QuickEdit. Press Enter to release.)"
 
     $expectedPaths = @($expected | ForEach-Object { $_.Exe })
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     $lastKick = Get-Date
+    $lastTick = Get-Date
+    $waitStart = Get-Date
 
     while ($true) {
         $running = Get-RunningWatcherProcesses -ExePaths $expectedPaths
@@ -434,36 +543,13 @@ function Start-SelectedWatchers {
             $lastKick = Get-Date
         }
 
+        if (((Get-Date) - $lastTick).TotalSeconds -ge 10) {
+            $elapsed = [int]((Get-Date) - $waitStart).TotalSeconds
+            Write-Host "  still waiting... ($elapsed s)"
+            $lastTick = Get-Date
+        }
+
         Start-Sleep -Seconds 2
-    }
-
-    # Fallback: the SYSTEM supervisor launches watchers into interactive sessions via
-    # WTSQueryUserToken/CreateProcessAsUser, which can silently find no session. If the
-    # installer itself is running in an interactive session, start the user watchers here.
-    $running = Get-RunningWatcherProcesses -ExePaths $expectedPaths
-    $missing = @(
-        $expected | Where-Object {
-            $exePath = $_.Exe
-            ($_.Key -ne "system") -and -not ($running | Where-Object { $_.ExecutablePath -eq $exePath })
-        }
-    )
-
-    $installerSessionId = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").SessionId
-    if ($missing.Count -gt 0 -and $installerSessionId -ne 0) {
-        $startScript = Join-Path $InstallDir "start-watchers.ps1"
-        if (Test-Path $startScript) {
-            Write-Host "Supervisor did not start $($missing.Count) watcher(s); starting them directly in session $installerSessionId..."
-            $powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
-            try {
-                & $powershell -NoProfile -ExecutionPolicy Bypass -File $startScript 2>&1 |
-                    ForEach-Object { Write-Host "  $_" }
-            } catch {
-                Write-Warning "Direct watcher start failed: $($_.Exception.Message)"
-            }
-            Start-Sleep -Seconds 3
-        } else {
-            Write-Warning "start-watchers.ps1 not found at $startScript"
-        }
     }
 
     $running = Get-RunningWatcherProcesses -ExePaths $expectedPaths
@@ -543,11 +629,24 @@ function Stop-ExistingWatcherProcesses {
 }
 
 if (-not $AllowNonAdmin -and -not (Test-IsAdmin)) {
+    if ($IsHeadless) {
+        throw "Administrator rights are required for a headless installation."
+    }
     Invoke-SelfElevation -BoundParameters $PSBoundParameters
 }
 
 $selectedWatchers = if ($PSBoundParameters.ContainsKey("Watchers")) {
     Resolve-WatcherSelection -SelectedWatchers $Watchers
+} elseif ($KeepExistingSelection -or ($IsHeadless -and -not $SkipWatcherSelection)) {
+    # Auto-update path: keep whatever this machine already has installed;
+    # fall back to all watchers on a fresh machine.
+    $existingSelection = Get-ExistingWatcherSelection -InstallDir $InstallDir
+    if ($existingSelection) {
+        Write-Host "Keeping existing watcher selection."
+        $existingSelection
+    } else {
+        Get-AllWatcherKeys
+    }
 } elseif ($SkipWatcherSelection) {
     Get-AllWatcherKeys
 } else {
@@ -569,6 +668,15 @@ Remove-WatcherStartupShortcut
 
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 Expand-Archive -Path $payload -DestinationPath $InstallDir -Force
+
+# Record which watcher package build is now installed. The supervisor reports
+# this version to the fleet server and uses it to decide when to self-update.
+$packageVersion = (Get-FileHash -Algorithm SHA256 -LiteralPath $payload).Hash.ToLowerInvariant()
+Set-Content -Path (Join-Path $InstallDir "package-version.txt") -Encoding ASCII -Value $packageVersion
+Write-Host "Installed watcher package version: $packageVersion"
+
+Write-FleetToken -Token $FleetToken
+
 Write-WatcherSelectionConfig -InstallDir $InstallDir -SelectedWatchers $selectedWatchers
 Remove-UnselectedWatcherFolders -InstallDir $InstallDir -SelectedWatchers $selectedWatchers
 
@@ -638,3 +746,11 @@ if (-not $NoStart) {
 Write-Host "ActivityWatch Fleet Watchers installed to $InstallDir"
 Write-Host "Installed watcher components: $($selectedWatchers -join ', ')"
 Write-Host "Watchers will send to http://192.168.0.144:5600/"
+
+Write-Host ""
+Write-Host "Installation completed successfully." -ForegroundColor Green
+if ($IsHeadless) {
+    try { Stop-Transcript | Out-Null } catch { }
+} else {
+    Read-Host "Press Enter to close this window" | Out-Null
+}
