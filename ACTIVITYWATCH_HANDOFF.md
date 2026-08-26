@@ -12,9 +12,28 @@ installing the server on LS and running the watcher installer once per device.
 
 ### Freshly built artefacts (this round)
 
-- Server setup SHA256: `CEE1FE55DF16720B15831B14065E8F4058C114DA892CFB8B4F4ABB20188A07A0`
+- Server setup SHA256: `B4F8A8396291EB96E990C92C3089BD6B20B1FFBE9888E2E22043003EB8060C85`
+  (rebuilt 2026-08-26, latest build that day - THIS one is current: Meine
+  Zusammenfassung page (non-admin only), settings split with aligned
+  connector buttons, Redmine email auto-mapping fix, multi-field category
+  rules (aw-core changed!), Category Builder removed, phantom-session
+  identity fix, corrected token-panel texts, watcher timeline tree picker, honest
+  update-status wording, embeds the DEPLOYED watcher package `673131b3...`
+  (identity fix + installer elevation guard + Stop-Process/-Force +
+  PSModulePath fixes); payload
+  `v0.13.2.dev+e5983e5`. All earlier same-day SHAs are superseded.
+  NOTE: `ActivityWatch-Fleet-Watchers-Setup.exe` is still the 2026-08-25
+  build - the old exe was held open over the SMB share (System PID 4) and
+  could not be replaced. The GUI rollout does not need it:
+  `ActivityWatch-Fleet-Watchers-Update.zip` + `watchers-iexpress` staging
+  are current (`build-setup.ps1` gained `-SkipWatchersSetupExe` for exactly
+  this). Rebuild the exe with `build-setup.ps1 -Target Watchers` once the
+  handle is closed (helper: `close-setup-lock.ps1` at the repo root,
+  self-elevating, closes the SMB handle). NOTE: iexpress failed once at step 6/6 leaving a
+  146KB stub exe + full ~CAB - deleting both and re-running
+  `build-setup.ps1 -Target Server` alone fixed it.)
 - Watchers setup SHA256: `2BA7E6A28F808C68B64E830126FBE4A12436799F73098E5DE1F1E7BD5A517D0C`
-- Watchers update zip SHA256: `494DB2BC3BBF409B3BFEC8C2233AB62C0448952A013560C88A9147894778AA02`
+- Watchers update zip: rebuilt 2026-08-26, package version `0c5880e4aeb235796ee009426fc3186563f7c6b20b52fbf65a54b0e2055af6d0` (was 494DB2BC.../57a425e...)
 - Watcher package version (= SHA256 of payload.zip, embedded in the server):
   `57a425e44a63ca18bc64a52415718bbc53d07a3ccaf023fef221205d443a1e0c`
 - Watchers preconfigured for `http://192.168.0.144:5600/`
@@ -524,11 +543,75 @@ angezeigt." The route guard (`isNonAdminPathAllowed`) and the FleetNav pill
 accept either summary grant, and `fleet-summary-own` is selectable as a start
 page once granted.
 
-Note the page still shows a one-row table rather than a purpose-built personal
-view; it is the existing Zusammenfassung with everything else filtered out.
-That was deliberate - it reuses the Tagesvergleich and Redmine comparison
-as-is - but if it should look different for these users, that is a UI change on
-top, not an authorization change.
+RESOLVED 2026-08-26: it is a page of its own now - see section 0.16. The
+grant, and the server-side scoping described above, are unchanged.
+
+## 0.16 "Meine Zusammenfassung" is its own page (finishes 0.13)
+
+The own-summary grant used to open `/fleet/summary` with every other user
+filtered out: a one-row table, a hidden user picker and a sentence explaining
+that the rest was missing. It was correct and it was safe, but it read like a
+page someone had been locked out of rather than a page written for them.
+
+There is now `/fleet/me` (`FleetMySummary.vue`), built for one person:
+
+- range presets - Heute / Gestern / Diese Woche / Letzte Woche / Dieser Monat /
+  Letzter Monat - instead of two date fields and a Load button as the only way
+  in. It opens on the current week.
+- four figures at the top: aktive Sitzungszeit (with the AFK-subtracted value
+  underneath), in Redmine gebucht, the difference, and the number of days with
+  activity plus the average per such day.
+- "Meine Tage": one block per day, newest first, each with a two-bar comparison
+  (tracked vs booked, scaled against the busiest day in the range) and that
+  day's bookings with project and comment. The date links into the own
+  single-user view for that day.
+- "Meine Projekte": the range's Redmine projects ranked by time, with a share
+  bar.
+- the difference is graded rather than just signed: within 15 min green, within
+  an hour amber, beyond that red - the question this page answers is "have I
+  booked my hours", so it should answer it at a glance.
+
+No new endpoints and no new authorization. It reads `/0/fleet/summary`,
+`/0/fleet/redmine-comparison` and `/0/fleet/redmine-daily-comparison`, all three
+already scope-rewritten server-side by `_authorize_fleet_summary_scope`
+(section 0.13). The page pins the username to the logged-in user as well, but
+that is cosmetic - the server would rewrite it anyway.
+
+Routing, and the one thing to be careful about:
+
+- `FLEET_PAGE_PATHS['fleet-summary-own']` now points at `/fleet/me`, and the
+  non-admin whitelist lets `fleet-summary` open BOTH pages while
+  `fleet-summary-own` opens only the personal one. If that mapping ever slips
+  back to `/fleet/summary`, an own-only user lands on the fleet-wide table -
+  scoped by the server, so not a leak, but wrong. That is what
+  `test/unit/landingPage.test.node.ts` guards.
+- `/fleet/summary` redirects to `/fleet/me` for own-only users, so old bookmarks
+  and stored landing pages still work.
+- REVERSED 2026-08-26 (same day): admins do NOT get the page. They pick any
+  user - themselves included - on the fleet Zusammenfassung, so the personal
+  page is non-admin only: no nav pill, no start-page option, `/fleet/me`
+  redirects admins to `/fleet/summary`, and a stale `fleet-summary-own`
+  start-page override degrades to the fleet table.
+- `FleetSummary.vue` lost its `ownSummaryOnly` branch entirely - the fleet table
+  is the fleet table again.
+
+One server change was needed, and it is worth knowing about on its own:
+`get_fleet_redmine_daily_comparison` used to return ZERO days when Redmine was
+disabled or unreachable. The per-day list is the substance of the personal page,
+and how long someone worked each day does not depend on Redmine, so the days are
+now returned either way - with `redmine_seconds`/`delta_seconds` as `null` and
+`matched: false`, exactly like a user who has no Redmine account. `enabled` and
+`message`/`error` still say why the booked column is empty. A failed lookup
+resets the matched set first, so a Redmine outage can never render as "matched,
+booked nothing". The Tagesvergleich on the fleet page benefits from the same
+change. Covered by
+`test_daily_comparison_returns_days_without_redmine`.
+
+Tests: 57 passed in `aw-server` (was 56), 41 in `aw-webui` (was 32), covering
+the grant-to-path mapping, the own-row selection, the per-day mapping, the
+tolerance grading and the range presets. Verified against a real server on
+port 5699 with seeded events: the daily endpoint returns seven working days
+with tracked time while Redmine is off.
 
 ## 0.14 Geraete lists offline devices too
 
@@ -1038,6 +1121,217 @@ That roadmap still reflects the intended direction well, but this handoff is the
 
 
 ## 10. Latest Local Work Notes
+
+### 2026-08-26 — Watcher timeline picker as a tree + honest update status
+
+- The Watcher-Zeitachse bucket picker in the fleet single-user view grouped
+  its flat checkbox list (one per watcher x device x session - unusable once
+  a user has worked on many machines) into a TREE: one card per watcher TYPE
+  with a tri-state parent checkbox (select/deselect all devices, shows n/m)
+  and the devices ("DEVICE - Sitzung n (type)") as children. The inner
+  scrollbar is gone - the panel grows with content
+  (`.fleet-daily-watcher-controls`, `dailyWatcherGroups`,
+  `toggleDailyWatcherGroup` in FleetActivitySummary.vue).
+- The update panel's "Manuelles Update zuletzt fehlgeschlagen, naechster
+  Versuch in Kuerze" was shown for ~1 min after every SUCCESSFUL manual
+  update (the state only means "attempted, cooling down" - the detached
+  installer's result is unknown until the device confirms its new version,
+  which also auto-clears the request). Reworded to "Manuelles Update
+  ausgefuehrt - Ergebnis wird bestaetigt". The real fix (result file +
+  status reporting + abort button) is the tracked TODO task.
+- TBFPC8 was invisible in Live although all watchers ran fine: its clock was
+  5 min behind (w32time source "Local CMOS Clock", never synced). Now
+  configured against dc.tbfgmbh.local. LESSON: a device missing from Live
+  with healthy watchers = check the clock first.
+
+### 2026-08-26 — GUI watcher update debugged end-to-end (two latent bugs)
+
+The first-ever GUI-triggered watcher update (all previous rollouts were
+manual installs) hit TWO latent bugs, found by live-debugging on TBFPC2 with
+the logs of TBFPC7 read over the admin share:
+
+- BUG 1 - headless install hung forever: `Stop-ExistingWatcherProcesses` in
+  install-watchers.ps1 called Stop-Process WITHOUT -Force. Stopping another
+  user's process (SYSTEM stopping the session users' watchers) makes
+  Stop-Process PROMPT - invisibly, with no console - so the update froze
+  right after "Selected watcher components" ($ConfirmPreference='None' does
+  NOT suppress this particular prompt; only -Force does). Manual installs
+  never hit it (same-user processes). Fix: -Force -Confirm:$false, plus the
+  supervisor tasks are now unregistered BEFORE stopping watchers so a
+  supervisor pass cannot relaunch them mid-extraction. A hung installer
+  shows as GUI "Update laeuft"/"zuletzt fehlgeschlagen" with retries every
+  ~15 min per request; the stuck powershell must be killed by hand.
+- BUG 2 - supervisor could never start watchers (latent since forever):
+  start-watchers.ps1, when launched by the SYSTEM supervisor into a session
+  (CreateProcessAsUser + CreateEnvironmentBlock), dies in ~0.5s with exit 1
+  and no output. Cause: the USER part of PSModulePath points into the
+  redirected Documents folder on \dc\profiles$, unreachable for that
+  process (its token cannot re-authenticate to the share); PowerShell module
+  auto-loading then fails and BUILT-IN cmdlets (Write-Warning,
+  Import-PowerShellDataFile) resolve as "not recognized"; with
+  $ErrorActionPreference='Stop' the script exits silently. Interactive runs
+  and scheduled tasks can reach the share, so the logon-shortcut start
+  always worked and masked this. Fix: first statement of start-watchers.ps1
+  pins $env:PSModulePath to "$PSHOME\Modules;$env:ProgramFiles\WindowsPowerShell\Modules"
+  via plain assignment (cmdlet-free - a Join-Path there would itself fail).
+  start-watchers also gained a transcript
+  (%LOCALAPPDATA%\ActivityWatchFleet\logs\start-watchers.log) and an error
+  trap with a %TEMP% fallback, so this path is diagnosable from now on.
+- Debug technique worth remembering: the launcher's exit code was captured
+  by polling Win32_Process and touching .Handle before exit; a user-level
+  scheduled task reproduces the CreateEnvironmentBlock environment; the
+  installed scripts were instrumented in place after an elevated
+  `icacls ... /grant TBFGMBH\mstep:(OI)(CI)M` (REVOKE with /remove:g after
+  debugging; helper grant-debug-access.ps1 at repo root).
+- Package history that day: 0c5880e4 (identity fix, BROKEN headless update),
+  ca93cf03 (+ Stop-Process fix - update path works), d5cbb17d
+  (+ start-watchers instrumentation), 673131b3 (+ PSModulePath fix - FINAL,
+  rolled out fleet-wide via GUI upload). `build-setup.ps1` gained
+  `-SkipWatchersSetupExe` (stage payload/manifest/Update.zip without the
+  setup exe) after the old exe was SMB-locked by another PC.
+- Server-side status view: "Aktuell/Gemeldete Version" reflects
+  package-version.txt as reported by the supervisor - it proves the PACKAGE
+  is installed, not that watcher PROCESSES are running. The pending TODO
+  (abort button + real error reporting) is tracked as a spawned task.
+
+### 2026-08-26 — Phantom session fix (elevation identity) + token rollout facts
+
+- BUG (seen on TBFPC7): a UAC prompt answered with a DIFFERENT account's
+  credentials (admin installs watchers while a user is logged in) runs the
+  installer - and the watchers it starts - with the ADMIN's token and
+  environment inside the logged-in user's session. resolve_identity read
+  %USERNAME%, so those watchers reported the admin as a second "active
+  session" on the device (aklac AND mstep active on PC7).
+- Fix 1 (root, aw-core/identity.py): `get_windows_session_username()` asks
+  WTS for the session OWNER; resolve_identity precedence is now explicit
+  config > WTS session owner > %USERNAME% > getpass. Session 0/services fall
+  through to the environment as before. Ships with the WATCHER package -
+  five dists rebuilt.
+- Fix 2 (install-watchers.ps1): the interactive direct-start now compares
+  the installer identity with the session owner (explorer.exe owner) and
+  skips the direct start on mismatch - the SYSTEM supervisor (kicked by the
+  existing wait loop) starts watchers with the real session user's token.
+- Device-side cleanup after the bug: `Get-Process aw-watcher-* | Stop-Process
+  -Force` (elevated); the supervisor relaunches correct ones within a
+  minute. Phantom buckets `...__<host>__<admin>__1` can be deleted in Raw
+  Data.
+- TOKEN ROLLOUT FACT (from a code audit, see api.py:843-851): an APPROVED
+  enrolled device's key is a FULL alternative to the shared fleet token -
+  `is_machine_credential_valid` accepts either. Devices write their
+  self-generated key to the same fleet-token.txt and send it as Bearer on
+  every heartbeat/update poll. So with every expected device "Freigegeben"
+  under Administration > Geraete, "Token verlangen" can be switched on
+  WITHOUT running install-watchers.ps1 -FleetToken anywhere. The old panel
+  warning claimed otherwise - texts updated (FleetAuthSettings.vue, i18n).
+- Tests: aw-core 184 passed (5 new in tests/test_identity_username.py),
+  aw-webui 61. Rollout: watcher dists + package rebuilt, then server rebuilt
+  (embeds package + new texts). Fleet updates itself via the GUI package;
+  the identity fix reaches devices with that watcher update.
+
+### 2026-08-26 — Multi-field category rules + Category Builder removed
+
+- Category rules can now check SEVERAL fields at once: a rule may carry
+  `conditions` - additional per-field regex checks that must ALL hold on top
+  of the primary pattern. Motivating case: ApplicationFrameHost.exe fronts
+  many unrelated UWP programs, so `app` alone cannot categorize it; an
+  app + title rule can. Matching lives in `aw-core/aw_transform/classify.py`
+  (`RuleCondition`, AND-ed in `Rule.match`, compiled once - no measurable
+  cost; malformed conditions fail closed). Tie-breaking: deepest category
+  still wins; at equal depth the rule with MORE conditions now wins
+  (previously list order); condition-less behaviour is bit-identical.
+- A category may also carry `extra_rules` (OR-ed, independent): a
+  conditioned rule routes more events into an existing category WITHOUT
+  touching its main rule. The webui flattens them into repeated (name, rule)
+  query entries (`classes_for_query`, `SelectCategoriesOrPattern`), which
+  the query engine already accepted.
+- UI: both categorize panels (EventEditor "Edit event" and the fleet
+  activity view) gained "Zusaetzliche Feldpruefungen" rows (field + pattern,
+  prefilled from the event where a value exists). Saving with conditions
+  against an existing category stores an extra rule - never OR-appends into
+  the old regex, which would drop the AND semantics. `CategoryEditModal`
+  edits conditions and extra rules; the tree shows +N condition(s)/rule(s).
+- REMOVED: the Category Builder page (`/settings/category-builder`,
+  `CategoryBuilder.vue`) and every link to it (CategorizationSettings
+  paragraph, UncategorizedNotification sentence).
+- Storage: plain JSON keys inside the existing `classes` setting - old
+  configs load unchanged; `cleanCategory` strips unsatisfiable conditions
+  and empty extra rules on save.
+- Tests: aw-core `tests/test_classify_conditions.py` (11, incl. a
+  tie-behaviour regression guard), webui `test/unit/categoryConditions.test.js`
+  (9). Suites: aw-core 179 passed, aw-webui 61, aw-server 65. Requires webui
+  rebuild + server repackage (aw-core changed: PyInstaller rebuild REQUIRED).
+
+### 2026-08-26 — Connector panels: one button convention
+
+- `/settings/connectors` panels no longer disagree about button placement:
+  the enable switch sits top left under the heading (Redmine's Aktiviert
+  toggle moved down from the header's right corner), fields follow, and the
+  action row sits bottom LEFT with Save first and Test next to it - on both
+  `RedmineSettings.vue` and `AdminAuthSettings.vue`. (First attempt
+  right-aligned the rows; corrected the same day to left.)
+- Requires webui rebuild + server repackage (included in the current
+  installer, SHA 04A379B9...).
+
+### 2026-08-26 — Meine Zusammenfassung removed for admins
+
+- The personal page is non-admin only now: admins already pick any user
+  (themselves included) on the fleet Zusammenfassung. Removed the admin nav
+  pill (`FleetNav.vue`), the admin start-page option
+  (`UserAccessSettings.vue`), and `/fleet/me` from `ADMIN_LANDING_PAGES`.
+- Degradation for stale state: `route.js` redirects an admin hitting
+  `/fleet/me` to `/fleet/summary`; `ADMIN_LANDING_KEY_PATHS` maps a stored
+  admin `fleet-summary-own` override to `/fleet/summary`; a stored personal
+  `/fleet/me` start page clamps to the default. Non-admin behaviour (grant,
+  scoping, redirect for own-only users) unchanged.
+- Tests: `landingPage.test.node.ts` grew to 10. Requires webui rebuild +
+  server repackage.
+
+### 2026-08-26 — Settings split + Redmine email auto-mapping fix
+
+- Settings menu is split in two: `/settings` (Allgemein) keeps the local
+  preferences, new `/settings/connectors` (Verbindungen) holds LDAP
+  (`AdminAuthSettings`) and Redmine (`RedmineSettings`). Shared pill sub-nav
+  `components/SettingsNav.vue` on both pages; the header Settings entry is now
+  a dropdown with both. The Connectors tab/menu item and panels are only
+  offered to the built-in `admin` account (their endpoints already were);
+  other admins get a notice. Both routes stay `adminOnly`.
+- BUG FIX — Redmine auto-mapping ("kein Redmine-Benutzer" despite matching
+  addresses, e.g. ecau/aklac): `active_users()` read `users.mail`, but
+  Redmine >= 3.0 stores addresses in `email_addresses` and an upgraded DB
+  keeps the old column empty for accounts created after the upgrade. The
+  query now reads `email_addresses` (default address first) with
+  `COALESCE(..., u.mail)` as fallback, and degrades gracefully: no
+  `email_addresses` table -> `users.mail` only; no `users.mail` column ->
+  `email_addresses` only. See `_active_users_sql`/`_query_active_users` in
+  `aw_server/redmine.py`.
+- Jest config: `vue-awesome/icons/*` is now stubbed globally via
+  `moduleNameMapper` -> `test/stubs/vueAwesomeIcon.js`; per-test
+  `jest.mock('vue-awesome/icons/...')` lines are no longer needed.
+- New tests: `tests/test_redmine.py` (8, scripted `_query`, no DB needed) and
+  `test/unit/SettingsNav.test.js` (7). Suites: aw-server 65, aw-webui 49.
+  `npm run build` verified. Requires webui rebuild + server repackage.
+
+### 2026-08-26 — "Meine Zusammenfassung" as a real page
+
+- New view `views/fleet/FleetMySummary.vue` on `/fleet/me`: range presets, four
+  headline figures, a per-day tracked-vs-booked list with bars and bookings, and
+  a ranked project list. Full description in section 0.16.
+- `landingPage.ts`: `OWN_SUMMARY_PAGE`, `hasOwnSummaryOnly()`, the
+  `fleet-summary-own` grant now maps to `/fleet/me`, and the non-admin
+  whitelist splits the two summary grants.
+- `route.js`: the new route plus a redirect from `/fleet/summary` to `/fleet/me`
+  for own-only users (old bookmarks / stored landing pages).
+- `FleetNav.vue`: a "Meine Zusammenfassung" pill for admins and for
+  `fleet-summary-own` holders. `UserAccessSettings.vue`: selectable as an admin
+  start page.
+- `FleetSummary.vue`: `ownSummaryOnly` removed - no more one-row table.
+- `api.py`: `get_fleet_redmine_daily_comparison` returns its days even when
+  Redmine is disabled or fails; unbooked days come back as `null`, never as 0.
+- New tests: `test/unit/FleetMySummary.test.js` (9),
+  `test/unit/landingPage.test.node.ts` (7),
+  `test_daily_comparison_returns_days_without_redmine`.
+- Requires webui rebuild + server repackage (PyInstaller dist rebuild first).
+
 
 ### 2026-08-25 — Per-user page permissions, non-admin lockdown, wide settings
 

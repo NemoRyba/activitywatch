@@ -3,15 +3,51 @@ param(
     [int]$ServerPort = 5600
 )
 
+# The user PSModulePath can contain a redirected-Documents UNC path
+# (e.g. \\dc\profiles$\...) that is unreachable from a supervisor-launched
+# process: its token cannot re-authenticate to the share. PowerShell module
+# auto-loading then fails and even BUILT-IN cmdlets resolve as "not
+# recognized" - this script died on its first Write-Warning, silently, on
+# every supervisor pass. Pin the module path to local machine locations
+# BEFORE any cmdlet runs, with a plain assignment (no cmdlets involved).
+$env:PSModulePath = "$PSHOME\Modules;${env:ProgramFiles}\WindowsPowerShell\Modules"
+
 $ErrorActionPreference = "Stop"
 
 $installDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $configPath = Join-Path $installDir "watchers.config.psd1"
-$runtimeRoot = Join-Path ${env:LOCALAPPDATA} "ActivityWatchFleet"
+# CreateEnvironmentBlock-launched processes (the SYSTEM supervisor starting
+# this script inside a session) can carry a sparse environment; never trust
+# a single variable when a fallback is derivable.
+$localAppData = if (${env:LOCALAPPDATA}) { ${env:LOCALAPPDATA} } else {
+    Join-Path ${env:USERPROFILE} "AppData\Local"
+}
+$runtimeRoot = Join-Path $localAppData "ActivityWatchFleet"
 $logsDir = Join-Path $runtimeRoot "logs\watchers"
 $pidsDir = Join-Path $runtimeRoot "pids"
 
+# The supervisor starts this script fire-and-forget with no redirection, so
+# any failure here was invisible - watchers silently did not come back after
+# an update. The trap (with a TEMP fallback for failures before the log dir
+# exists) plus the transcript make this path diagnosable.
+trap {
+    $message = "START-WATCHERS FAILED: $_`r`n$($_.ScriptStackTrace)"
+    Write-Host $message
+    try {
+        Add-Content -Path (Join-Path ${env:TEMP} "aw-start-watchers-error.txt") `
+            -Value ("{0}  {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $message)
+    } catch { }
+    try { Stop-Transcript | Out-Null } catch { }
+    exit 1
+}
+
 New-Item -ItemType Directory -Force -Path $runtimeRoot, $logsDir, $pidsDir | Out-Null
+
+try {
+    Start-Transcript -Path (Join-Path $runtimeRoot "logs\start-watchers.log") -Append | Out-Null
+    Write-Host ("=== start-watchers run {0} (user {1}, session env LOCALAPPDATA='{2}') ===" -f `
+        (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), ${env:USERNAME}, ${env:LOCALAPPDATA})
+} catch { }
 
 function Get-SelectedWatcherKeys {
     $defaultWatchers = @("afk", "window", "session", "audio", "system")
@@ -153,3 +189,5 @@ foreach ($watcher in $userWatchers) {
 if (-not $startedAny) {
     Write-Host "No per-user watchers selected; nothing to start."
 }
+
+try { Stop-Transcript | Out-Null } catch { }

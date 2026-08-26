@@ -2,7 +2,12 @@ param(
     [string]$ServerHost = "192.168.0.144",
     [int]$ServerPort = 5600,
     [ValidateSet("All", "Server", "Watchers")]
-    [string]$Target = "All"
+    [string]$Target = "All",
+    # Stage the watcher payload, manifest and Update.zip but skip the setup
+    # EXE. Useful when the previous EXE is held open (e.g. a device has it
+    # open over the network share) - the GUI rollout and the server embed
+    # need only the zip and the watchers-iexpress staging, not the EXE.
+    [switch]$SkipWatchersSetupExe
 )
 
 $ErrorActionPreference = "Stop"
@@ -43,10 +48,12 @@ if ($Target -eq "All" -and (Test-Path $distRoot)) {
         $pathsToRemove += @(
             $watchersPayload,
             $watchersIexpress,
-            $watchersSetup,
             (Join-Path $distRoot "watchers-setup.sed"),
             (Join-Path $distRoot "ActivityWatch-Fleet-Watchers-Update.zip")
         )
+        if (-not $SkipWatchersSetupExe) {
+            $pathsToRemove += $watchersSetup
+        }
     }
     foreach ($path in $pathsToRemove) {
         Assert-UnderRepo $path
@@ -342,15 +349,19 @@ if ($buildServer) {
 }
 
 if ($buildWatchers) {
-    New-IExpressSed `
-        -SourceDir $watchersIexpress `
-        -TargetName $watchersSetup `
-        -FriendlyName "ActivityWatch Fleet Watchers" `
-        -InstallScript "install-watchers.ps1" `
-        -SedPath (Join-Path $distRoot "watchers-setup.sed")
+    if ($SkipWatchersSetupExe) {
+        Write-Host "Skipping watcher setup EXE (-SkipWatchersSetupExe); payload, manifest and Update.zip are staged."
+    } else {
+        New-IExpressSed `
+            -SourceDir $watchersIexpress `
+            -TargetName $watchersSetup `
+            -FriendlyName "ActivityWatch Fleet Watchers" `
+            -InstallScript "install-watchers.ps1" `
+            -SedPath (Join-Path $distRoot "watchers-setup.sed")
 
-    Invoke-IExpress -SedPath (Join-Path $distRoot "watchers-setup.sed")
-    Complete-IExpressOutput -Path $watchersSetup
-    Write-Host "Created $watchersSetup"
+        Invoke-IExpress -SedPath (Join-Path $distRoot "watchers-setup.sed")
+        Complete-IExpressOutput -Path $watchersSetup
+        Write-Host "Created $watchersSetup"
+    }
     Write-Host "Watchers are preconfigured for http://$($ServerHost):$ServerPort/"
 }

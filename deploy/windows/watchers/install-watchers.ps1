@@ -489,8 +489,36 @@ function Start-SelectedWatchers {
     # The installer runs inside an interactive session, so start the per-user
     # watchers directly FIRST - deterministic and instant. The SYSTEM
     # supervisor task remains responsible for boot time and self-healing.
+    #
+    # EXCEPT when the installer is not running as the session's own user: a
+    # UAC prompt answered with a DIFFERENT account's credentials runs this
+    # script - and everything it starts - as that other account, inside the
+    # logged-in user's session. Watchers started that way inherit the wrong
+    # identity and report a phantom session for the admin account. In that
+    # case leave the start to the SYSTEM supervisor task (kicked below),
+    # which launches watchers with the real session user's token.
     $installerSessionId = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").SessionId
+    $directStartAllowed = $true
     if ($installerSessionId -ne 0) {
+        try {
+            $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name.Split([char]92)[-1]
+            $sessionShell = Get-CimInstance Win32_Process `
+                -Filter "Name='explorer.exe' and SessionId=$installerSessionId" |
+                Select-Object -First 1
+            if ($sessionShell) {
+                $owner = Invoke-CimMethod -InputObject $sessionShell -MethodName GetOwner
+                $sessionUser = [string]$owner.User
+                if ($sessionUser -and ($sessionUser -ne $currentUser)) {
+                    $directStartAllowed = $false
+                    Write-Host ("Installer runs as '{0}' but session {1} belongs to '{2}' (elevation with different credentials)." -f $currentUser, $installerSessionId, $sessionUser)
+                    Write-Host "Skipping direct start; the supervisor task will start the watchers as the session user."
+                }
+            }
+        } catch {
+            Write-Warning "Could not compare installer identity with session owner: $($_.Exception.Message)"
+        }
+    }
+    if ($installerSessionId -ne 0 -and $directStartAllowed) {
         $startScript = Join-Path $InstallDir "start-watchers.ps1"
         if (Test-Path $startScript) {
             Write-Host "Starting watchers directly in session $installerSessionId..."
@@ -603,9 +631,15 @@ function Stop-ExistingWatcherProcesses {
     $processIds = @($processes | ForEach-Object { [int]$_.ProcessId })
 
     try {
-        Stop-Process -Id $processIds -ErrorAction SilentlyContinue
+        # -Force is required: without it Stop-Process PROMPTS for
+        # confirmation when a process belongs to another user - exactly the
+        # headless case (SYSTEM stopping the session users' watchers). With
+        # no console the prompt blocks forever and the update hangs after
+        # "Selected watcher components". -Force only skips that prompt; the
+        # kill itself is the same.
+        Stop-Process -Id $processIds -Force -Confirm:$false -ErrorAction SilentlyContinue
     } catch {
-        Write-Warning "Could not gracefully stop existing ActivityWatch Fleet Watcher processes: $($_.Exception.Message)"
+        Write-Warning "Could not stop existing ActivityWatch Fleet Watcher processes: $($_.Exception.Message)"
     }
 
     Wait-Process -Id $processIds -Timeout 10 -ErrorAction SilentlyContinue
@@ -661,9 +695,12 @@ if (-not (Test-Path $payload)) {
     throw "Missing payload.zip next to install-watchers.ps1"
 }
 
-Stop-ExistingWatcherProcesses -InstallDir $InstallDir
+# Unregister the supervisor BEFORE stopping watchers: its per-minute pass
+# relaunches watchers into every session, and a relaunch between the stop and
+# the extraction would leave locked exes for Expand-Archive.
 Unregister-ScheduledTask -TaskName "ActivityWatch Fleet Watchers Supervisor" -Confirm:$false -ErrorAction SilentlyContinue
 Unregister-ScheduledTask -TaskName "ActivityWatch Fleet System Watcher" -Confirm:$false -ErrorAction SilentlyContinue
+Stop-ExistingWatcherProcesses -InstallDir $InstallDir
 Remove-WatcherStartupShortcut
 
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
